@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # Or any version compatible with PlatformIO (3.7+)
+          python-version: "3.9" # Or any version compatible with PlatformIO (3.7+)
 
       # Step 3: Install PlatformIO Core
       - name: Install PlatformIO Core
