@@ -105,4 +105,4 @@ The ESP32's dual cores are utilized via FreeRTOS tasks to improve performance an
   * More stable network performance as it's not interrupted by sensor polling or display updates.  
   * Better overall system stability by isolating potentially blocking operations.
 
-[Previous Chapter: Usage Guide](http://docs.google.com/05-usage-guide.md) | [Next Chapter: Troubleshooting](http://docs.google.com/07-troubleshooting.md)
+[Previous Chapter: Usage Guide](05-usage-guide.md) | [Next Chapter: Troubleshooting](07-troubleshooting.md)

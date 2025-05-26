@@ -148,4 +148,4 @@ The project is organized into several header (.h) and source (.cpp) files to pro
 
 This modular structure makes the codebase easier to understand, debug, and extend.
 
-[Previous Chapter: Hardware](http://docs.google.com/02-hardware.md) | [Next Chapter: Setup and Installation](http://docs.google.com/04-setup-and-installation.md)
+[Previous Chapter: Hardware](02-hardware.md) | [Next Chapter: Setup and Installation](04-setup-and-installation.md)

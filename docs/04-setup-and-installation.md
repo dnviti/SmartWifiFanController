@@ -86,4 +86,4 @@ The project requires both the main firmware and the web interface files (HTML, C
 
 After completing these steps, your ESP32 should be running the fan controller firmware with the web interface files available on its filesystem.
 
-[Previous Chapter: Software](http://docs.google.com/03-software.md) | [Next Chapter: Usage Guide](http://docs.google.com/05-usage-guide.md)
+[Previous Chapter: Software](03-software.md) | [Next Chapter: Usage Guide](05-usage-guide.md)

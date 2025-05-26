@@ -128,4 +128,4 @@ When WiFi is enabled and the ESP32 is connected to your network:
 
 This multi-faceted approach to control and configuration provides flexibility for various user needs and scenarios.
 
-[Previous Chapter: Setup and Installation](http://docs.google.com/04-setup-and-installation.md) | [Next Chapter: Technical Details & Protocols](http://docs.google.com/06-technical-details.md)
+[Previous Chapter: Setup and Installation](04-setup-and-installation.md) | [Next Chapter: Technical Details & Protocols](06-technical-details.md)

@@ -53,4 +53,4 @@ This chapter provides solutions to common issues you might encounter while build
 
 By systematically checking these areas and utilizing the serial debug output, most common problems can be diagnosed and resolved.
 
-[Previous Chapter: Technical Details & Protocols](http://docs.google.com/06-technical-details.md) | [Next Chapter: Future Enhancements](http://docs.google.com/08-future-enhancements.md)
+[Previous Chapter: Technical Details & Protocols](06-technical-details.md) | [Next Chapter: Future Enhancements](08-future-enhancements.md)

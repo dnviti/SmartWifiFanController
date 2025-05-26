@@ -61,4 +61,4 @@ The primary objectives of this project are:
 * Web UI features a loading animation for an improved initial page load experience.  
 * Modular C++ code structure, separating concerns into logical files for better maintainability and scalability.
 
-[Next Chapter: Hardware](http://docs.google.com/02-hardware.md)
+[Next Chapter: Hardware](02-hardware.md)
