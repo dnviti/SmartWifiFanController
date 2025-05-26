@@ -42,14 +42,23 @@ The following libraries are crucial for the project's functionality. When using 
 
 **Example platformio.ini lib\_deps section:**
 
-    lib\_deps \=  
-        esp32async/AsyncTCP  
-        esp32async/ESPAsyncWebServer  
-        links2004/WebSockets  
-        adafruit/Adafruit BMP280 Library  
-        adafruit/Adafruit Unified Sensor  
-        marcoschwartz/LiquidCrystal\_I2C  
-        bblanchon/ArduinoJson@^7.0.0
+    lib_deps = 
+        ; Async Web Server and TCP
+        ottowinter/ESPAsyncWebServer-esphome @ ^3.3.0     ; A well-maintained fork, or use me-no-dev/ESP Async WebServer
+        esphome/AsyncTCP-esphome @ ^2.1.4                 ; Dependency for the ESPAsyncWebServer fork above, or use me-no-dev/AsyncTCP
+
+        ; WebSockets
+        links2004/WebSockets @ ^2.6.1                     ; By Markus Sattler, very common
+
+        ; Temperature Sensor
+        adafruit/Adafruit BMP280 Library @ ^2.6.8
+        adafruit/Adafruit Unified Sensor @ ^1.1.15        ; Dependency for BMP280
+
+        ; I2C LCD
+        iakop/LiquidCrystal_I2C_ESP32 @ ^1.1.6           ; By Frank de Brabander
+
+        ; JSON Handling
+        bblanchon/ArduinoJson @ ^7.4.1
 
 *Note: Specific versions (@^x.y.z) can be added for better build reproducibility.*
 
@@ -86,20 +95,20 @@ The firmware is designed around the ESP32's dual-core capabilities using FreeRTO
 **Conceptual Task Interaction:**
 
     Core 0 (Network)                     Core 1 (Application)  
-    \+-----------------+                    \+---------------------+  
-    |  networkTask    |\<-------------------| mainAppTask         |  
-    | \- WiFi Connect  | (needsBroadcast)   | \- Read Sensors (Temp)|  
-    | \- Web Server    |                    | \- Read Tachometer   |  
-    | \- WebSocket Srv |---(Web Cmds)------\>|   (via ISR)         |  
-    |   \- Listen      |\<--(Shared State)----| \- Update LCD        |  
-    |   \- Broadcast   |                    | \- Handle Buttons    |  
-    \+-----------------+                    | \- Handle Serial Cmds|  
-                                            | \- Fan Control Logic |  
-                                            \+---------------------+  
+    +------------------+                    +-----------------------+  
+    |  networkTask     |<-------------------| mainAppTask           |  
+    | - WiFi Connect   | (needsBroadcast)   | - Read Sensors (Temp) |  
+    | - Web Server     |                    | - Read Tachometer     |  
+    | - WebSocket Srv  |---(Web Cmds)------>|   (via ISR)           |  
+    |   - Listen       |<--(Shared State)---| - Update LCD          |  
+    |   - Broadcast    |                    | - Handle Buttons      |  
+    +------------------+                    | - Handle Serial Cmds  |  
+                                            | - Fan Control Logic   |  
+                                            +-----------------------+  
                                                       | (ISR)  
-                                            \+---------------------+  
-                                            | countPulse (Tach)   |  
-                                            \+---------------------+
+                                            +-----------------------+  
+                                            | countPulse (Tach)     |  
+                                            +-----------------------+
 
 ## **3.4. Code Structure (Key Files in src/)**
 
