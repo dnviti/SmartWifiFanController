@@ -42,14 +42,14 @@ The following libraries are crucial for the project's functionality. When using 
 
 **Example platformio.ini lib\_deps section:**
 
-lib\_deps \=  
-    esp32async/AsyncTCP  
-    esp32async/ESPAsyncWebServer  
-    links2004/WebSockets  
-    adafruit/Adafruit BMP280 Library  
-    adafruit/Adafruit Unified Sensor  
-    marcoschwartz/LiquidCrystal\_I2C  
-    bblanchon/ArduinoJson@^7.0.0
+    lib\_deps \=  
+        esp32async/AsyncTCP  
+        esp32async/ESPAsyncWebServer  
+        links2004/WebSockets  
+        adafruit/Adafruit BMP280 Library  
+        adafruit/Adafruit Unified Sensor  
+        marcoschwartz/LiquidCrystal\_I2C  
+        bblanchon/ArduinoJson@^7.0.0
 
 *Note: Specific versions (@^x.y.z) can be added for better build reproducibility.*
 
@@ -85,21 +85,21 @@ The firmware is designed around the ESP32's dual-core capabilities using FreeRTO
 
 **Conceptual Task Interaction:**
 
-   Core 0 (Network)                     Core 1 (Application)  
-   \+-----------------+                    \+---------------------+  
-   |  networkTask    |\<-------------------| mainAppTask         |  
-   | \- WiFi Connect  | (needsBroadcast)   | \- Read Sensors (Temp)|  
-   | \- Web Server    |                    | \- Read Tachometer   |  
-   | \- WebSocket Srv |---(Web Cmds)------\>|   (via ISR)         |  
-   |   \- Listen      |\<--(Shared State)----| \- Update LCD        |  
-   |   \- Broadcast   |                    | \- Handle Buttons    |  
-   \+-----------------+                    | \- Handle Serial Cmds|  
-                                          | \- Fan Control Logic |  
-                                          \+---------------------+  
-                                                    | (ISR)  
-                                          \+---------------------+  
-                                          | countPulse (Tach)   |  
-                                          \+---------------------+
+    Core 0 (Network)                     Core 1 (Application)  
+    \+-----------------+                    \+---------------------+  
+    |  networkTask    |\<-------------------| mainAppTask         |  
+    | \- WiFi Connect  | (needsBroadcast)   | \- Read Sensors (Temp)|  
+    | \- Web Server    |                    | \- Read Tachometer   |  
+    | \- WebSocket Srv |---(Web Cmds)------\>|   (via ISR)         |  
+    |   \- Listen      |\<--(Shared State)----| \- Update LCD        |  
+    |   \- Broadcast   |                    | \- Handle Buttons    |  
+    \+-----------------+                    | \- Handle Serial Cmds|  
+                                            | \- Fan Control Logic |  
+                                            \+---------------------+  
+                                                      | (ISR)  
+                                            \+---------------------+  
+                                            | countPulse (Tach)   |  
+                                            \+---------------------+
 
 ## **3.4. Code Structure (Key Files in src/)**
 
