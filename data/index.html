@@ -1,0 +1,44 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>ESP32 Fan Controller (SPIFFS)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <div id="loadingOverlay" class="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="main-content-wrapper hidden-initially"> 
+    <div class="container">
+      <div id="debugModeNotice" class="debug-notice hidden">DEBUG MODE ACTIVE (Serial Commands Enabled)</div>
+      <h1>PC Fan Controller (ESP32 - SPIFFS)</h1>
+      <div class="data-grid">
+        <span class="data-label">Temperature:</span> <span id="temp" class="data-value">--</span> &deg;C
+        <span class="data-label">Fan Speed:</span> <span id="fanSpeed" class="data-value">--</span> %
+        <span class="data-label">Fan RPM:</span> <span id="rpm" class="data-value">--</span> RPM
+        <span class="data-label">Mode:</span> <span id="mode" class="data-value">--</span> <span id="autoModeNotice" class="data-value" style="font-size:0.8em; color:#e67e22;"></span>
+      </div>
+
+      <button id="autoModeButton" onclick="sendCommand({action: 'setModeAuto'})">Auto Mode</button>
+      <button onclick="sendCommand({action: 'setModeManual'})">Manual Mode</button>
+
+      <div class="slider-container" id="manualControl" style="display:none;">
+        <p>Manual Fan Speed: <span id="manualSpeedValue">50</span>%</p>
+        <input type="range" min="0" max="100" value="50" id="speedSlider" oninput="updateSliderValueDisplay(this.value)" onchange="setManualSpeed(this.value)">
+      </div>
+    </div>
+
+    <div class="container curve-editor" id="curveEditorContainer">
+      <h2>Fan Curve Editor (Auto Mode)</h2>
+      <div id="fanCurvePointsContainer">
+        <p class="placeholder">Curve points will load here...</p>
+      </div>
+      <button onclick="addCurvePointUI()">+ Add Point</button>
+      <button onclick="saveFanCurve()" class="secondary">Save Curve to Device</button>
+      <p style="font-size:0.9em; color:#555;">Note: Curve is stored on device. Min 2 points, max 8. Temps must be increasing.</p>
+    </div>
+  </div> 
+
+  <script src="script.js"></script>
+</body>
+</html>
