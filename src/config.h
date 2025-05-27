@@ -11,6 +11,7 @@
 #include <LiquidCrystal_I2C.h>
 #include <ArduinoJson.h> 
 #include <Preferences.h>
+#include <PubSubClient.h> // Added for MQTT
 
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
@@ -42,22 +43,32 @@ extern volatile int fanRpm;
 extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
 extern volatile unsigned long pulseCount; // For ISR
-extern unsigned long lastRpmReadTime_Task; // Moved definition to main.cpp
+extern unsigned long lastRpmReadTime_Task; 
 
 // --- Menu System Variables ---
-enum MenuScreen { MAIN_MENU, WIFI_SETTINGS, WIFI_SCAN, WIFI_PASSWORD_ENTRY, WIFI_STATUS, VIEW_STATUS, CONFIRM_REBOOT };
+// Added MQTT_SETTINGS and sub-menus
+enum MenuScreen { 
+    MAIN_MENU, 
+    WIFI_SETTINGS, WIFI_SCAN, WIFI_PASSWORD_ENTRY, WIFI_STATUS, 
+    MQTT_SETTINGS, MQTT_SERVER_ENTRY, MQTT_PORT_ENTRY, MQTT_USER_ENTRY, MQTT_PASS_ENTRY, MQTT_TOPIC_ENTRY,
+    VIEW_STATUS, 
+    CONFIRM_REBOOT 
+};
 extern volatile MenuScreen currentMenuScreen;
 extern volatile int selectedMenuItem;
 extern volatile int scanResultCount;
-extern String scannedSSIDs[10]; // Size defined by MAX_SCANNED_SSIDS if needed, or keep fixed
-extern char passwordInputBuffer[64];
-extern volatile int passwordCharIndex;
-extern volatile char currentPasswordEditChar;
+extern String scannedSSIDs[10]; 
+extern char passwordInputBuffer[64]; // Used for WiFi and MQTT passwords
+extern char generalInputBuffer[128]; // For MQTT server, user, topic
+extern volatile int generalInputCharIndex;
+extern volatile char currentGeneralEditChar;
+
+
+extern volatile int passwordCharIndex; // Specific to WiFi password entry if needed, or merge with general input
+extern volatile char currentPasswordEditChar; // Specific to WiFi password entry if needed
 
 // --- Fan Curve ---
-// Define MAX_CURVE_POINTS here to make it a compile-time constant for array declarations
 const int MAX_CURVE_POINTS = 8; 
-
 extern int tempPoints[MAX_CURVE_POINTS];
 extern int pwmPercentagePoints[MAX_CURVE_POINTS];
 extern int numCurvePoints;
@@ -68,8 +79,17 @@ extern int stagingPwmPercentagePoints[MAX_CURVE_POINTS];
 extern int stagingNumCurvePoints;
 
 // --- Task Communication ---
-extern volatile bool needsImmediateBroadcast;
+extern volatile bool needsImmediateBroadcast; // Also used for MQTT updates
 extern volatile bool rebootNeeded; 
+
+// --- MQTT Configuration ---
+extern volatile bool isMqttEnabled;
+extern char mqttServer[64];
+extern int mqttPort;
+extern char mqttUser[64];
+extern char mqttPassword[64]; // Re-use passwordInputBuffer for entry if desired, then copy here
+extern char mqttBaseTopic[64];
+
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;
@@ -77,6 +97,8 @@ extern Adafruit_BMP280 bmp;
 extern LiquidCrystal_I2C lcd;
 extern AsyncWebServer server;
 extern WebSocketsServer webSocket;
+extern WiFiClient espClient; // For MQTT
+extern PubSubClient mqttClient; // For MQTT
 
 // --- Button Debouncing ---
 extern unsigned long buttonPressTime[5]; 

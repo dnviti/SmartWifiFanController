@@ -5,7 +5,9 @@
 #include "display_handler.h"
 #include "input_handler.h"
 #include "network_handler.h" 
-#include "tasks.h"           
+#include "tasks.h"
+#include "mqtt_handler.h"   // Added for MQTT
+
 
 // --- Global Variable Definitions (these are declared extern in config.h) ---
 // Pin Definitions
@@ -45,9 +47,13 @@ volatile MenuScreen currentMenuScreen = MAIN_MENU;
 volatile int selectedMenuItem = 0;
 volatile int scanResultCount = 0;
 String scannedSSIDs[10]; 
-char passwordInputBuffer[64] = "";
-volatile int passwordCharIndex = 0;
-volatile char currentPasswordEditChar = 'a';
+char passwordInputBuffer[64] = ""; // For WiFi password
+char generalInputBuffer[128] = ""; // For MQTT server, user, topic, MQTT pass
+volatile int generalInputCharIndex = 0;
+volatile char currentGeneralEditChar = 'a';
+
+volatile int passwordCharIndex = 0; // Specifically for WiFi password if separate logic is kept
+volatile char currentPasswordEditChar = 'a'; // Specifically for WiFi password
 
 // Fan Curve
 // MAX_CURVE_POINTS is defined in config.h
@@ -64,12 +70,24 @@ int stagingNumCurvePoints = 0;
 volatile bool needsImmediateBroadcast = false;
 volatile bool rebootNeeded = false; 
 
+// MQTT Configuration
+volatile bool isMqttEnabled = false; // Default to disabled
+char mqttServer[64] = "your_mqtt_broker_ip"; // Default, load from NVS
+int mqttPort = 1883;                         // Default, load from NVS
+char mqttUser[64] = "";                      // Default, load from NVS
+char mqttPassword[64] = "";                  // Default, load from NVS
+char mqttBaseTopic[64] = "fancontroller";    // Default, load from NVS
+
+
 // Global Objects
 Preferences preferences;
 Adafruit_BMP280 bmp;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 AsyncWebServer server(80);
 WebSocketsServer webSocket(81);
+WiFiClient espClient; // For MQTT
+PubSubClient mqttClient(espClient); // For MQTT
+
 
 // Button Debouncing
 unsigned long buttonPressTime[5]; 
@@ -112,6 +130,7 @@ void setup() {
     }
 
     loadWiFiConfig(); 
+    loadMqttConfig(); // Load MQTT settings from NVS
     Wire.begin(); 
 
     if(serialDebugEnabled) Serial.println("[INIT] Initializing BMP280 sensor...");
@@ -171,19 +190,19 @@ void setup() {
     pinMode(BTN_SELECT_PIN, INPUT_PULLUP);
     pinMode(BTN_BACK_PIN, INPUT_PULLUP);
     if(serialDebugEnabled) Serial.println("[INIT] Buttons Setup Complete.");
+    
+    // MQTT setup is called within networkTask if enabled, after WiFi connection
+    // setupMQTT(); // This will be called from networkTask
 
     if(serialDebugEnabled) Serial.println("[INIT] Creating FreeRTOS Tasks...");
-    if (isWiFiEnabled) { 
-        if(serialDebugEnabled) Serial.println("[INIT] WiFi is enabled by config, starting NetworkTask.");
-        xTaskCreatePinnedToCore(networkTask, "NetworkTask", 12000, NULL, 1, &networkTaskHandle, 0);
-    } else {
-        if(serialDebugEnabled) Serial.println("[INIT] WiFi is disabled by config. NetworkTask will not be started.");
-    }
+    // Network task will handle both WiFi, WebSockets, and MQTT
+    xTaskCreatePinnedToCore(networkTask, "NetworkTask", 12000, NULL, 1, &networkTaskHandle, 0); // Stack size might need adjustment
+    
     xTaskCreatePinnedToCore(mainAppTask, "MainAppTask", 10000, NULL, 2, &mainAppTaskHandle, 1); 
 
-    if(serialDebugEnabled) Serial.println("[INIT] Setup complete. Tasks launched (if applicable).");
+    if(serialDebugEnabled) Serial.println("[INIT] Setup complete. Tasks launched.");
 }
 
 void loop() {
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(1000)); // Main loop does very little, tasks handle work
 }
