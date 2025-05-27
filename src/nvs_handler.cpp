@@ -175,3 +175,37 @@ void loadMqttConfig() {
         isMqttEnabled = false;
     }
 }
+
+// --- NVS Helper Functions for MQTT Discovery --- ADDED
+void saveMqttDiscoveryConfig() {
+    if (preferences.begin("mqtt-disc-cfg", false)) { // Open for writing
+        preferences.putBool("discEn", isMqttDiscoveryEnabled);
+        preferences.putString("discPfx", mqttDiscoveryPrefix);
+        preferences.end();
+        if (serialDebugEnabled) Serial.println("[NVS] MQTT Discovery configuration saved.");
+    } else {
+        if (serialDebugEnabled) Serial.println("[NVS_SAVE_ERR] Failed to open 'mqtt-disc-cfg' for writing.");
+    }
+}
+
+void loadMqttDiscoveryConfig() {
+    if (preferences.begin("mqtt-disc-cfg", true)) { // Open read-only
+        isMqttDiscoveryEnabled = preferences.getBool("discEn", true); // Default to true if not found
+
+        String tempPrefix = preferences.getString("discPfx", "homeassistant");
+        strncpy(mqttDiscoveryPrefix, tempPrefix.c_str(), sizeof(mqttDiscoveryPrefix) - 1);
+        mqttDiscoveryPrefix[sizeof(mqttDiscoveryPrefix) - 1] = '\0';
+        
+        preferences.end();
+        if (serialDebugEnabled) {
+            Serial.println("[NVS] MQTT Discovery configuration loaded:");
+            Serial.printf("  Enabled: %s\n", isMqttDiscoveryEnabled ? "Yes" : "No");
+            Serial.printf("  Prefix: %s\n", mqttDiscoveryPrefix);
+        }
+    } else {
+        if (serialDebugEnabled) Serial.println("[NVS_LOAD_ERR] Failed to open 'mqtt-disc-cfg' for reading. Using default MQTT Discovery values.");
+        // Defaults are already set in main.cpp, ensure isMqttDiscoveryEnabled is true if load fails
+        isMqttDiscoveryEnabled = true; 
+        strcpy(mqttDiscoveryPrefix, "homeassistant");
+    }
+}

@@ -80,8 +80,8 @@ char mqttPassword[64] = "";                  // Default, load from NVS
 char mqttBaseTopic[64] = "fancontroller";    // Default, load from NVS
 
 // MQTT Discovery Configuration
-volatile bool isMqttDiscoveryEnabled = true; // Default to true. Can be made configurable later.
-char mqttDiscoveryPrefix[32] = "homeassistant"; // Default Home Assistant prefix. Load from NVS if made configurable.
+volatile bool isMqttDiscoveryEnabled = true; // Default to true. Loaded from NVS.
+char mqttDiscoveryPrefix[32] = "homeassistant"; // Default Home Assistant prefix. Loaded from NVS.
 char mqttDeviceId[64] = "esp32fanctrl";   // Will be dynamically set in setup()
 char mqttDeviceName[64] = "ESP32 Fan Controller"; // Default, can be made configurable
 
@@ -138,8 +138,8 @@ void setup() {
     }
 
     loadWiFiConfig(); 
-    loadMqttConfig(); // Load MQTT settings from NVS
-    // loadMqttDiscoveryConfig(); // TODO: Implement if discovery prefix/enable needs to be stored in NVS
+    loadMqttConfig(); 
+    loadMqttDiscoveryConfig(); // ADDED: Load MQTT Discovery settings from NVS
 
     // Dynamically set mqttDeviceId based on MAC address to ensure uniqueness
     uint8_t mac[6];
@@ -149,7 +149,7 @@ void setup() {
     // For now, mqttDeviceName remains the default "ESP32 Fan Controller".
     if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device ID set to: %s\n", mqttDeviceId);
     if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device Name: %s\n", mqttDeviceName);
-    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Discovery Prefix: %s, Enabled: %s\n", mqttDiscoveryPrefix, isMqttDiscoveryEnabled ? "Yes" : "No");
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Discovery Prefix (after NVS load): %s, Enabled: %s\n", mqttDiscoveryPrefix, isMqttDiscoveryEnabled ? "Yes" : "No");
 
 
     Wire.begin(); 
