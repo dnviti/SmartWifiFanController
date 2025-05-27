@@ -1,8 +1,8 @@
 #include "network_handler.h"
-#include "config.h" // For global variables, server, webSocket objects
-#include "nvs_handler.h" // For saveFanCurveToNVS
+#include "config.h"      // For global variables, server, webSocket objects
+#include "nvs_handler.h" // For saveFanCurveToNVS, saveMqttConfig
 #include <SPIFFS.h>
-
+#include <ArduinoJson.h> // Ensure it's included for both send and receive
 
 void broadcastWebSocketData() {
     if (!isWiFiEnabled || WiFi.status() != WL_CONNECTED) return;
@@ -18,19 +18,33 @@ void broadcastWebSocketData() {
     jsonDoc["isWiFiEnabled"] = isWiFiEnabled; 
     jsonDoc["serialDebugEnabled"] = serialDebugEnabled; 
 
+    // Add Fan Curve data
     ArduinoJson::JsonArray curveArray = jsonDoc["fanCurve"].to<ArduinoJson::JsonArray>();
     for (int i = 0; i < numCurvePoints; i++) {
         ArduinoJson::JsonObject point = curveArray.add<ArduinoJson::JsonObject>();
         point["temp"] = tempPoints[i];
         point["pwmPercent"] = pwmPercentagePoints[i];
     }
+
+    // Add MQTT Configuration Data (excluding password)
+    jsonDoc["isMqttEnabled"] = isMqttEnabled;
+    jsonDoc["mqttServer"] = mqttServer;
+    jsonDoc["mqttPort"] = mqttPort;
+    jsonDoc["mqttUser"] = mqttUser;
+    // DO NOT send mqttPassword back to the client
+    jsonDoc["mqttBaseTopic"] = mqttBaseTopic;
+
+
     String jsonString;
     serializeJson(jsonDoc, jsonString);
     webSocket.broadcastTXT(jsonString);
+    if (serialDebugEnabled && millis() % 60000 < 100) { // Log broadcast data occasionally to avoid spam
+        Serial.print("[WS_BCAST] "); Serial.println(jsonString);
+    }
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-    if (!isWiFiEnabled) return; 
+    if (!isWiFiEnabled) return; // Should not happen if WS is active, but good check
 
     switch(type) {
         case WStype_DISCONNECTED:
@@ -38,18 +52,19 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
             break;
         case WStype_CONNECTED: {
             IPAddress ip = webSocket.remoteIP(num);
-            if(serialDebugEnabled) Serial.printf("[WS][%u] Client Connected from %s, URL: %s\n", num, ip.toString().c_str(), payload);
-            needsImmediateBroadcast = true;
+            if(serialDebugEnabled) Serial.printf("[WS][%u] Client Connected from %s, URL: %s\n", num, ip.toString().c_str(), (char *)payload);
+            // Send initial data to the newly connected client
+            needsImmediateBroadcast = true; // This will trigger broadcastWebSocketData in the networkTask loop
             break;
         }
         case WStype_TEXT: {
-            if(serialDebugEnabled) Serial.printf("[WS][%u] Received Text: %s\n", num, payload);
+            if(serialDebugEnabled) Serial.printf("[WS][%u] Received Text: %s\n", num, (char *)payload);
             ArduinoJson::JsonDocument doc; 
             
             DeserializationError error = deserializeJson(doc, payload, length);
 
             if (error) {
-                if(serialDebugEnabled) Serial.print(F("[WS] deserializeJson() failed: "));
+                if(serialDebugEnabled) Serial.print(F("[WS_ERR] deserializeJson() failed: "));
                 if(serialDebugEnabled) Serial.println(error.f_str());
                 return;
             }
@@ -70,61 +85,119 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                         needsImmediateBroadcast = true; 
                         if(serialDebugEnabled) Serial.printf("[SYSTEM] Manual speed target set to %d%% via WebSocket.\n", manualFanSpeedPercentage);
                     } else {
-                        if(serialDebugEnabled) Serial.println("[WS] Ignored setManualSpeed, not in manual mode.");
+                        if(serialDebugEnabled) Serial.println("[WS_WARN] Ignored setManualSpeed, not in manual mode.");
                     }
                 } else if (strcmp(action, "setCurve") == 0) {
                     if (!tempSensorFound) {
-                        if(serialDebugEnabled) Serial.println("[WS] Ignored setCurve, temperature sensor not found.");
+                        if(serialDebugEnabled) Serial.println("[WS_WARN] Ignored setCurve, temperature sensor not found.");
                         break; 
                     }
                     ArduinoJson::JsonArray newCurve = doc["curve"];
-                    if (newCurve) { 
+                    if (newCurve && newCurve.size() >= 2 && newCurve.size() <= MAX_CURVE_POINTS) { 
                         if(serialDebugEnabled) Serial.println("[WS] Received new fan curve data.");
+                        bool curveValid = true;
+                        int lastTemp = -100; 
+                        int tempTempPointsValidation[MAX_CURVE_POINTS];
+                        int tempPwmPercentagePointsValidation[MAX_CURVE_POINTS]; 
                         int newNumPoints = newCurve.size();
-                        if (newNumPoints >= 2 && newNumPoints <= MAX_CURVE_POINTS) {
-                            bool curveValid = true;
-                            int lastTemp = -100; 
-                            int tempTempPointsValidation[MAX_CURVE_POINTS];
-                            int tempPwmPercentagePointsValidation[MAX_CURVE_POINTS]; 
 
-                            for(int i=0; i < newNumPoints; ++i) {
-                                ArduinoJson::JsonObject point = newCurve[i];
-                                int t = point["temp"];
-                                int p = point["pwmPercent"];
-
-                                if (t < 0 || t > 120 || p < 0 || p > 100 || (i > 0 && t <= lastTemp) ) {
-                                    curveValid = false;
-                                    if(serialDebugEnabled) Serial.printf("[WS] Invalid curve point %d received: Temp=%d, PWM=%d\n", i, t, p);
-                                    break;
-                                }
-                                tempTempPointsValidation[i] = t;
-                                tempPwmPercentagePointsValidation[i] = p; 
-                                lastTemp = t;
+                        for(int i=0; i < newNumPoints; ++i) {
+                            ArduinoJson::JsonObject point = newCurve[i];
+                            // Updated check using obj[key].is<T>()
+                            if (!point["temp"].is<int>() || !point["pwmPercent"].is<int>()) {
+                                curveValid = false;
+                                if(serialDebugEnabled) Serial.printf("[WS_ERR] Curve point %d missing temp or pwmPercent, or wrong type.\n", i);
+                                break;
                             }
+                            int t = point["temp"];
+                            int p = point["pwmPercent"];
 
-                            if (curveValid) {
-                                numCurvePoints = newNumPoints;
-                                for(int i=0; i < numCurvePoints; ++i) {
-                                    tempPoints[i] = tempTempPointsValidation[i];
-                                    pwmPercentagePoints[i] = tempPwmPercentagePointsValidation[i]; 
-                                }
-                                if(serialDebugEnabled) Serial.println("[SYSTEM] Fan curve updated and validated via WebSocket.");
-                                saveFanCurveToNVS(); 
-                                needsImmediateBroadcast = true; 
-                            } else {
-                                if(serialDebugEnabled) Serial.println("[SYSTEM] New fan curve from web rejected due to invalid data.");
+                            if (t < 0 || t > 120 || p < 0 || p > 100 || (i > 0 && t <= lastTemp) ) {
+                                curveValid = false;
+                                if(serialDebugEnabled) Serial.printf("[WS_ERR] Invalid curve point %d received: Temp=%d, PWM=%d. LastTemp=%d\n", i, t, p, lastTemp);
+                                break;
                             }
+                            tempTempPointsValidation[i] = t;
+                            tempPwmPercentagePointsValidation[i] = p; 
+                            lastTemp = t;
+                        }
+
+                        if (curveValid) {
+                            numCurvePoints = newNumPoints;
+                            for(int i=0; i < numCurvePoints; ++i) {
+                                tempPoints[i] = tempTempPointsValidation[i];
+                                pwmPercentagePoints[i] = tempPwmPercentagePointsValidation[i]; 
+                            }
+                            if(serialDebugEnabled) Serial.println("[SYSTEM] Fan curve updated and validated via WebSocket.");
+                            saveFanCurveToNVS(); 
+                            needsImmediateBroadcast = true; 
                         } else {
-                             if(serialDebugEnabled) Serial.printf("[SYSTEM] Invalid number of curve points (%d) from web. Must be 2-%d.\n", newNumPoints, MAX_CURVE_POINTS);
+                            if(serialDebugEnabled) Serial.println("[SYSTEM_ERR] New fan curve from web rejected due to invalid data.");
                         }
                     } else {
-                        if(serialDebugEnabled) Serial.println("[WS] 'setCurve' action received, but 'curve' array missing or invalid.");
+                         if(serialDebugEnabled) Serial.printf("[WS_ERR] 'setCurve' action received, but 'curve' array missing, invalid, or wrong size (got %d points).\n", newCurve.size());
                     }
-                } else {
-                    if(serialDebugEnabled) Serial.printf("[WS] Unknown action received: %s\n", action);
+                } 
+                else if (strcmp(action, "setMqttConfig") == 0) {
+                    if (serialDebugEnabled) Serial.println("[WS] Received MQTT configuration update.");
+                    
+                    bool newMqttEnabled = doc["isMqttEnabled"] | isMqttEnabled; 
+                    String newMqttServer = doc["mqttServer"] | String(mqttServer);
+                    int newMqttPort = doc["mqttPort"] | mqttPort;
+                    String newMqttUser = doc["mqttUser"] | String(mqttUser);
+                    String newMqttPassword = doc["mqttPassword"]; 
+                    String newMqttBaseTopic = doc["mqttBaseTopic"] | String(mqttBaseTopic);
+
+                    bool changed = false;
+                    if (isMqttEnabled != newMqttEnabled) { isMqttEnabled = newMqttEnabled; changed = true; }
+                    
+                    if (newMqttServer.length() < sizeof(mqttServer)) {
+                        if (strcmp(mqttServer, newMqttServer.c_str()) != 0) {
+                            strcpy(mqttServer, newMqttServer.c_str()); changed = true;
+                        }
+                    }
+                    if (mqttPort != newMqttPort && newMqttPort > 0 && newMqttPort <= 65535) {
+                        mqttPort = newMqttPort; changed = true;
+                    }
+                     if (newMqttUser.length() < sizeof(mqttUser)) {
+                        if (strcmp(mqttUser, newMqttUser.c_str()) != 0) {
+                            strcpy(mqttUser, newMqttUser.c_str()); changed = true;
+                        }
+                    }
+                    // Updated check using doc[key].is<T>()
+                    // Only update password if a new one was actually sent in the payload and is a string
+                    if (doc["mqttPassword"].is<const char*>() && newMqttPassword.length() < sizeof(mqttPassword)) {
+                         if (strcmp(mqttPassword, newMqttPassword.c_str()) != 0) {
+                            strcpy(mqttPassword, newMqttPassword.c_str()); changed = true;
+                         }
+                    } else if (doc["mqttPassword"].is<String>() && newMqttPassword.length() < sizeof(mqttPassword) ) {
+                        // Handle if it was parsed as Arduino String object
+                         if (strcmp(mqttPassword, newMqttPassword.c_str()) != 0) {
+                            strcpy(mqttPassword, newMqttPassword.c_str()); changed = true;
+                         }
+                    }
+
+
+                     if (newMqttBaseTopic.length() > 0 && newMqttBaseTopic.length() < sizeof(mqttBaseTopic)) {
+                         if (strcmp(mqttBaseTopic, newMqttBaseTopic.c_str()) != 0) {
+                            strcpy(mqttBaseTopic, newMqttBaseTopic.c_str()); changed = true;
+                         }
+                    }
+
+                    if (changed) {
+                        if (serialDebugEnabled) Serial.println("[SYSTEM] MQTT configuration updated via WebSocket.");
+                        saveMqttConfig();
+                        rebootNeeded = true; 
+                        needsImmediateBroadcast = true; 
+                    } else {
+                        if (serialDebugEnabled) Serial.println("[WS] MQTT configuration received, but no changes detected.");
+                    }
+                }
+                else {
+                    if(serialDebugEnabled) Serial.printf("[WS_ERR] Unknown action received: %s\n", action);
                 }
             } else {
-                 if(serialDebugEnabled) Serial.println("[WS] Received text, but no 'action' field found in JSON.");
+                 if(serialDebugEnabled) Serial.println("[WS_ERR] Received text, but no 'action' field found in JSON.");
             }
             break;
         }
@@ -158,5 +231,12 @@ void setupWebServerRoutes() {
             return;
         }
         request->send(SPIFFS, "/script.js", "application/javascript");
+    });
+    
+    server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request){
+        if(serialDebugEnabled) Serial.println("[HTTP] Reboot requested via /reboot endpoint.");
+        request->send(200, "text/plain", "Rebooting device...");
+        delay(1000); 
+        ESP.restart();
     });
 }

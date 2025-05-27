@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
   <title>ESP32 Fan Controller (SPIFFS)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -37,7 +37,38 @@
       <button onclick="saveFanCurve()" class="secondary">Save Curve to Device</button>
       <p style="font-size:0.9em; color:#555;">Note: Curve is stored on device. Min 2 points, max 8. Temps must be increasing.</p>
     </div>
-  </div> 
+
+    <div class="container mqtt-config-container" id="mqttConfigContainer">
+      <h2>MQTT Configuration</h2>
+      <div class="config-item">
+        <label for="mqttEnable">MQTT Enabled:</label>
+        <input type="checkbox" id="mqttEnable" onchange="toggleMqttFields()">
+      </div>
+      <div id="mqttFieldsContainer" class="hidden"> <div class="config-item">
+          <label for="mqttServer">Broker Server/IP:</label>
+          <input type="text" id="mqttServer" placeholder="e.g., 192.168.1.100 or mqtt.example.com">
+        </div>
+        <div class="config-item">
+          <label for="mqttPort">Broker Port:</label>
+          <input type="number" id="mqttPort" placeholder="e.g., 1883" min="1" max="65535">
+        </div>
+        <div class="config-item">
+          <label for="mqttUser">Username (Optional):</label>
+          <input type="text" id="mqttUser" placeholder="MQTT Username">
+        </div>
+        <div class="config-item">
+          <label for="mqttPassword">Password (Optional):</label>
+          <input type="password" id="mqttPassword" placeholder="MQTT Password">
+        </div>
+        <div class="config-item">
+          <label for="mqttBaseTopic">Base Topic:</label>
+          <input type="text" id="mqttBaseTopic" placeholder="e.g., fancontroller or home/pcfan">
+        </div>
+      </div>
+      <button onclick="saveMqttConfig()" class="secondary">Save MQTT Config</button>
+      <p class="reboot-notice hidden" id="mqttRebootNotice">A reboot is required for MQTT settings to take full effect.</p>
+    </div>
+    </div> 
 
   <script src="script.js"></script>
 </body>
