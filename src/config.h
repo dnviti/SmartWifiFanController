@@ -72,6 +72,7 @@ const int MAX_CURVE_POINTS = 8;
 extern int tempPoints[MAX_CURVE_POINTS];
 extern int pwmPercentagePoints[MAX_CURVE_POINTS];
 extern int numCurvePoints;
+extern volatile bool fanCurveChanged; // ADDED: Flag to indicate curve was changed by MQTT or Serial
 
 // Staging Fan Curve for Serial Commands
 extern int stagingTempPoints[MAX_CURVE_POINTS];

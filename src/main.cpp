@@ -60,6 +60,7 @@ volatile char currentPasswordEditChar = 'a'; // Specifically for WiFi password
 int tempPoints[MAX_CURVE_POINTS];
 int pwmPercentagePoints[MAX_CURVE_POINTS];
 int numCurvePoints = 0;
+volatile bool fanCurveChanged = false; // ADDED: Initialize flag
 
 // Staging Fan Curve for Serial Commands
 int stagingTempPoints[MAX_CURVE_POINTS];
@@ -191,13 +192,8 @@ void setup() {
     pinMode(BTN_BACK_PIN, INPUT_PULLUP);
     if(serialDebugEnabled) Serial.println("[INIT] Buttons Setup Complete.");
     
-    // MQTT setup is called within networkTask if enabled, after WiFi connection
-    // setupMQTT(); // This will be called from networkTask
-
     if(serialDebugEnabled) Serial.println("[INIT] Creating FreeRTOS Tasks...");
-    // Network task will handle both WiFi, WebSockets, and MQTT
-    xTaskCreatePinnedToCore(networkTask, "NetworkTask", 12000, NULL, 1, &networkTaskHandle, 0); // Stack size might need adjustment
-    
+    xTaskCreatePinnedToCore(networkTask, "NetworkTask", 12000, NULL, 1, &networkTaskHandle, 0); 
     xTaskCreatePinnedToCore(mainAppTask, "MainAppTask", 10000, NULL, 2, &mainAppTaskHandle, 1); 
 
     if(serialDebugEnabled) Serial.println("[INIT] Setup complete. Tasks launched.");
