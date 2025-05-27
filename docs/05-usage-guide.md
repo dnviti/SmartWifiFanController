@@ -4,128 +4,141 @@ This chapter explains how to interact with and use the ESP32 PC Fan Controller a
 
 ## **5.1. First Boot and Initial State**
 
-* **Power On:** After uploading the firmware and filesystem, power on your ESP32 fan controller.  
-* **Debug Mode Check:**  
-  * If the DEBUG\_ENABLE\_PIN is connected to HIGH (3.3V) at boot:  
-    * The onboard LED\_DEBUG\_PIN (GPIO2) will turn ON.  
-    * Serial output will be active at 115200 baud. You can open the Serial Monitor in PlatformIO/Arduino IDE to see boot messages and interact with the serial command interface. The first message should indicate that Serial Debug is enabled.  
-  * If the DEBUG\_ENABLE\_PIN is LOW (or floating, due to INPUT\_PULLDOWN):  
-    * The LED\_DEBUG\_PIN will be OFF.  
-    * The Serial port will be completely inactive; no messages will be printed.  
-* **Initial WiFi State:** By default (and on first boot if NVS is empty), isWiFiEnabled is set to false. The device will **not** attempt to connect to any WiFi network.  
-* **LCD Display:** The LCD will initialize and show "Fan Controller" and "Booting..." briefly. Once the mainAppTask starts, it will switch to the normal status display:  
-  * Line 1: Mode (e.g., "AUTO"), and "WiFi OFF" or "WiFi..." if attempting connection.  
-  * Line 2: Temperature (or "N/A"), Fan Speed %, and RPM.  
-* **Fan State:** The fan will initially be set to 0% speed.  
-* **Settings:** Default fan curve will be active. Other settings will be loaded from NVS if previously saved, otherwise defaults will apply.
+* **Power On:** After uploading the firmware and filesystem, power on your ESP32 fan controller.
+* **Debug Mode Check:**
+  * If the DEBUG\_ENABLE\_PIN is connected to HIGH (3.3V) at boot:
+    * The onboard LED\_DEBUG\_PIN (GPIO2) will turn ON.
+    * Serial output will be active at 115200 baud. You can open the Serial Monitor in PlatformIO/Arduino IDE to see boot messages and interact with the serial command interface. The first message should indicate that Serial Debug is enabled.
+  * If the DEBUG\_ENABLE_PIN is LOW (or floating, due to INPUT\_PULLDOWN):
+    * The LED\_DEBUG\_PIN will be OFF.
+    * The Serial port will be completely inactive; no messages will be printed.
+* **Initial WiFi & MQTT State:** By default (and on first boot if NVS is empty), `isWiFiEnabled` and `isMqttEnabled` are set to false. The device will **not** attempt to connect to any WiFi network or MQTT broker.
+* **LCD Display:** The LCD will initialize and show "Fan Controller" and "Booting..." briefly. Once the mainAppTask starts, it will switch to the normal status display:
+  * Line 1: Mode (e.g., "AUTO"), and WiFi status ("WiFi OFF", "WiFi...", or IP address). May also show MQTT connection status (e.g., "M" or "m").
+  * Line 2: Temperature (or "N/A"), Fan Speed %, and RPM.
+* **Fan State:** The fan will initially be set to 0% speed.
+* **Settings:** Default fan curve will be active. Other settings (WiFi, MQTT) will be loaded from NVS if previously saved, otherwise defaults will apply.
 
 ## **5.2. LCD Menu Navigation**
 
 The primary way to configure the device standalone is through the LCD menu system using the five physical buttons.
 
-* **Button Functions:**  
-  * BTN\_MENU\_PIN: Press to enter the main menu. Press again while in the main menu (or use the "Back" option) to exit to the normal status display.  
-  * BTN\_UP\_PIN: Navigate upwards in menu lists, or cycle through characters/values in edit modes.  
-  * BTN\_DOWN\_PIN: Navigate downwards in menu lists, or cycle through characters/values in edit modes.  
-  * BTN\_SELECT\_PIN: Confirm a menu selection, enter a submenu, or confirm a character/value in edit modes.  
-  * BTN\_BACK\_PIN: Go back to the previous menu screen, or cancel an action. In password entry, it acts as a backspace.  
-* **Menu Flow:**  
-  1. **Normal Status Display:** Shows current operational data.  
-     * Press BTN\_MENU\_PIN to enter the **Main Menu**.  
-  2. **Main Menu:**  
-     * \>WiFi Settings: (Selected by default) Press BTN\_SELECT\_PIN to enter.  
-     * View Status: Press BTN\_SELECT\_PIN to exit the menu and return to the normal status display.  
-     * *Navigate with UP/DOWN, select with SELECT.*  
-  3. **WiFi Settings Menu:**  
-     * \>WiFi: \[Enabled/Disabled\]: (Selected by default) Press BTN\_SELECT\_PIN to toggle the WiFi state between "Enabled" and "Disabled".  
-       * This change is saved to NVS immediately.  
-       * rebootNeeded flag is set. The system will guide you to the "Confirm Reboot" screen. A reboot is necessary for the networkTask to start or stop correctly.  
-     * Scan Networks: Press BTN\_SELECT\_PIN to initiate a WiFi scan.  
-     * SSID: \[current\_SSID\_prefix\]: Shows the currently configured SSID (first 8 chars). Press BTN\_SELECT\_PIN to go to the WiFi Scan screen to select a new SSID.  
-     * Password Set: Press BTN\_SELECT\_PIN to enter the password input screen for the current SSID.  
-     * Connect WiFi: Press BTN\_SELECT\_PIN to attempt connection to the configured SSID/Password. If successful and WiFi is enabled, rebootNeeded is set, and you'll be guided to confirm reboot (to ensure web services start).  
-     * DisconnectWiFi: Press BTN\_SELECT\_PIN to disconnect from the current WiFi network (does not disable WiFi).  
-     * Back to Main: Press BTN\_SELECT\_PIN to return to the Main Menu.  
-     * *Navigate with UP/DOWN, select with SELECT, go back with BACK.*  
-  4. **WiFi Scan Menu (WIFI\_SCAN):**  
-     * Displays "Scanning WiFi..." initially.  
-     * Once complete, lists available SSIDs (up to 10).  
-     * Use BTN\_UP\_PIN/BTN\_DOWN\_PIN to scroll through the list.  
-     * Press BTN\_SELECT\_PIN on a desired SSID to select it. The selected SSID is copied to current\_ssid (but not saved to NVS until "Connect WiFi" is successful or password is set). You are then returned to the WiFi Settings menu, usually highlighting the "Password Set" option.  
-     * Press BTN\_BACK\_PIN to return to WiFi Settings Menu.  
-  5. **Password Entry Menu (WIFI\_PASSWORD\_ENTRY):**  
-     * Line 1: "Enter Pass Char:"  
-     * Line 2: Shows entered characters as \* and the current character being edited.  
-     * BTN\_UP\_PIN/BTN\_DOWN\_PIN: Cycle through characters (space, 'a'-'z', 'A'-'Z', '0'-'9', symbols).  
-     * BTN\_SELECT\_PIN: Confirms the current character and moves to the next position. If the buffer is full, this acts as "Confirm Password".  
-     * BTN\_BACK\_PIN: Deletes the last entered character (backspace). If no characters entered, goes back to WiFi Settings.  
-     * Once the password is fully entered (or buffer full and SELECT pressed), it's copied to current\_password and saveWiFiConfig() is called. You are returned to WiFi Settings, usually highlighting "Connect WiFi".  
-  6. **Confirm Reboot Menu (CONFIRM\_REBOOT):**  
-     * Displays "Reboot needed\!"  
-     * Options: \>Yes and No.  
-     * BTN\_SELECT\_PIN on "Yes" will restart the ESP32.  
-     * BTN\_SELECT\_PIN on "No" will clear the rebootNeeded flag and return to the Main Menu. The setting change will only fully apply after the next manual reboot.  
-     * BTN\_BACK\_PIN also cancels the reboot and returns to Main Menu.
+* **Button Functions:**
+  * BTN\_MENU\_PIN: Press to enter the main menu. Press again while in the main menu (or use the "Back" option) to exit to the normal status display.
+  * BTN\_UP\_PIN: Navigate upwards in menu lists, or cycle through characters/values in edit modes.
+  * BTN\_DOWN\_PIN: Navigate downwards in menu lists, or cycle through characters/values in edit modes.
+  * BTN\_SELECT\_PIN: Confirm a menu selection, enter a submenu, or confirm a character/value in edit modes.
+  * BTN\_BACK\_PIN: Go back to the previous menu screen, or cancel an action. In input entry, it acts as a backspace or confirms current input and exits.
+* **Main Menu Flow:**
+  1. **Normal Status Display**
+     * Press BTN\_MENU\_PIN -> **Main Menu**
+       * \>WiFi Settings
+       * MQTT Settings
+       * View Status (Exits menu)
+  2. **WiFi Settings Menu:** (Selected from Main Menu)
+     * \>WiFi: \[Enabled/Disabled\] (Toggle, sets rebootNeeded)
+     * Scan Networks
+     * SSID: \[current\_SSID\] (Selects to go to Scan)
+     * Password Set (Enters WiFi Password Entry)
+     * Connect WiFi (Attempts connection, sets rebootNeeded if successful)
+     * DisconnectWiFi
+     * Back to Main
+  3. **WiFi Scan Menu (WIFI\_SCAN):**
+     * Shows "Scanning...", then lists SSIDs. Select an SSID to set it.
+  4. **Password Entry Menu (WIFI\_PASSWORD\_ENTRY):**
+     * For WiFi password. Cycle chars with UP/DOWN, confirm char with SELECT. Max length or pressing BACK after some chars saves.
+  5. **MQTT Settings Menu:** (Selected from Main Menu)
+     * \>MQTT: \[Enabled/Disabled\] (Toggle, sets rebootNeeded)
+     * Server: \[mqtt\_server\] (Enters MQTT Server Entry)
+     * Port: \[mqtt\_port\] (Enters MQTT Port Entry)
+     * User: \[mqtt\_user\] (Enters MQTT User Entry)
+     * Password: \[\*\*\*\] (Enters MQTT Password Entry)
+     * Base Topic: \[base\_topic\] (Enters MQTT Base Topic Entry)
+     * Back to Main
+  6. **MQTT Entry Screens (MQTT\_SERVER\_ENTRY, MQTT\_PORT\_ENTRY, etc.):**
+     * Title shows what you're editing (e.g., "MQTT Server:").
+     * Second line shows current input characters and the char being edited with UP/DOWN.
+     * Press SELECT to confirm the current char and move to the next.
+     * Press BACK to delete the last char. If no chars entered or after some input, pressing BACK will save the current buffer content to the respective MQTT setting in NVS and return to the MQTT Settings menu.
+     * For Port, only numeric input is allowed. Max length applies to all fields.
+  7. **Confirm Reboot Menu (CONFIRM\_REBOOT):**
+     * Displays "Reboot needed\!"
+     * Options: \>Yes (reboots) and No (cancels reboot, returns to Main Menu).
 
 ## **5.3. Serial Command Interface (Debug Mode)**
 
-This interface provides more direct control and detailed feedback, useful for debugging and advanced configuration.
+This interface provides more direct control and detailed feedback.
 
-* **Activation:** Ensure the DEBUG\_ENABLE\_PIN is HIGH when the ESP32 boots. The LED\_DEBUG\_PIN will illuminate.  
-* **Connection:** Connect to the ESP32 via a USB cable. Open the Serial Monitor in your IDE (PlatformIO or Arduino IDE) with the baud rate set to **115200**.  
-* **Usage:**  
-  * Upon successful connection, you should see boot messages and an indication that the serial debug interface is active.  
-  * Type help and press Enter to see a list of available commands.  
-  * Commands are case-insensitive.  
-  * Arguments are typically space-separated.  
-* **Key Serial Commands (refer to handleSerialCommands() in input\_handler.cpp for the full list and behavior):**  
-  * status: Displays current operational status (mode, fan speed, temp, RPM, WiFi info).  
-  * set\_mode auto: Switches to automatic fan control.  
-  * set\_mode manual \<percentage\>: Switches to manual mode and sets fan speed (e.g., set\_mode manual 75).  
-  * wifi\_enable / wifi\_disable: Toggles the WiFi operational state. Saves to NVS and sets rebootNeeded.  
-  * set\_ssid \<your\_network\_ssid\>: Sets the WiFi SSID. Saves to NVS.  
-  * set\_pass \<your\_network\_password\>: Sets the WiFi password. Saves to NVS.  
-  * connect\_wifi: Attempts to connect to the configured WiFi network. Sets rebootNeeded if successful.  
-  * disconnect\_wifi: Disconnects from the current WiFi network.  
-  * scan\_wifi: Performs a WiFi scan and lists results in the Serial Monitor.  
-  * view\_curve: Shows the current active fan curve points.  
-  * clear\_staging\_curve: Clears the temporary curve being built via serial.  
-  * stage\_curve\_point \<temperature\> \<pwm\_percentage\>: Adds a point to the temporary staging curve (e.g., stage\_curve\_point 30 20).  
-  * apply\_staged\_curve: Validates the staged curve, makes it active, and saves it to NVS.  
-  * load\_default\_curve: Loads the hardcoded default fan curve and saves it to NVS.  
-  * reboot: Restarts the ESP32.
+* **Activation:** DEBUG\_ENABLE\_PIN HIGH at boot. LED\_DEBUG\_PIN ON.
+* **Connection:** Serial Monitor at 115200 baud.
+* **Key Serial Commands (type `help` for full list):**
+  * `status`: Displays current operational status including WiFi and MQTT state.
+  * `set_mode auto` / `set_mode manual <percentage>`
+  * `wifi_enable` / `wifi_disable` (sets rebootNeeded)
+  * `set_ssid <ssid>` / `set_pass <password>`
+  * `connect_wifi` / `disconnect_wifi` / `scan_wifi`
+  * **`mqtt_enable` / `mqtt_disable`** (sets rebootNeeded)
+  * **`set_mqtt_server <address>`**
+  * **`set_mqtt_port <port>`**
+  * **`set_mqtt_user <username>`**
+  * **`set_mqtt_pass <password>`**
+  * **`set_mqtt_topic <base_topic>`**
+  * Fan curve commands: `view_curve`, `clear_staging_curve`, `stage_curve_point <t> <p>`, `apply_staged_curve`, `load_default_curve`.
+  * `reboot`
 
 ## **5.4. Web Interface (If WiFi Enabled)**
 
-When WiFi is enabled and the ESP32 is connected to your network:
+(No direct MQTT configuration via Web UI in this iteration, but status reflects MQTT-driven changes if any.)
+* Access via ESP32's IP address.
+* Real-time status display (Temp, Fan Speed/RPM, Mode).
+* Mode control (Auto/Manual buttons).
+* Manual speed slider.
+* Fan Curve Editor.
 
-1. **Access:**  
-   * Find the ESP32's IP address (displayed on the LCD during normal operation if WiFi is connected, or via the status serial command).  
-   * Open a web browser on a device connected to the *same* WiFi network.  
-   * Navigate to http://\<ESP32\_IP\_ADDRESS\>.  
-2. **Features:**  
-   * **Loading Screen:** A loading animation is shown briefly while the page establishes a WebSocket connection and receives initial data.  
-   * **Debug Mode Notice:** If serial debug mode is active on the ESP32, a notice will be displayed at the top of the web page.  
-   * **Status Display:** Real-time updates for:  
-     * Temperature (or "N/A" if sensor not found).  
-     * Current Fan Speed (%).  
-     * Current Fan RPM.  
-     * Current Mode (AUTO/MANUAL).  
-     * A notice if in AUTO mode without a temperature sensor (indicating fixed speed).  
-   * **Mode Control:**  
-     * "Auto Mode" button: Switches the fan controller to automatic mode.  
-     * "Manual Mode" button: Switches to manual mode.  
-   * **Manual Speed Slider:**  
-     * Visible only when in "MANUAL" mode.  
-     * Allows setting fan speed from 0% to 100%. Changes are sent to the ESP32 as you adjust the slider (on onchange event, typically when released).  
-   * **Fan Curve Editor:**  
-     * Visible only when in "AUTO" mode **and** the temperature sensor is detected (tempSensorFound is true).  
-     * Displays current curve points with input fields for temperature and PWM percentage.  
-     * "+ Add Point" button: Adds a new editable point to the curve (up to MAX\_CURVE\_POINTS).  
-     * "X" button next to each point: Removes that point from the UI.  
-     * "Save Curve to Device" button: Sends the edited curve from the UI to the ESP32. The ESP32 validates it, applies it if valid, and saves it to NVS.  
-   * **Real-time Updates:** All data displays are updated in real-time via WebSockets as the ESP32 broadcasts changes.
+## **5.5. MQTT Usage for Home Automation**
 
-This multi-faceted approach to control and configuration provides flexibility for various user needs and scenarios.
+Once MQTT is configured and enabled on the ESP32, and the ESP32 is connected to your WiFi and MQTT broker:
+
+1.  **Availability:**
+    * The ESP32 publishes its availability status (Last Will and Testament).
+    * **Topic:** `YOUR_BASE_TOPIC/online_status`
+    * **Payload:** `online` (when connected), `offline` (when disconnected). Retained message.
+
+2.  **Status Monitoring:**
+    * The ESP32 publishes its full status as a JSON payload.
+    * **Topic:** `YOUR_BASE_TOPIC/status_json`
+    * **Payload Example:**
+      ```json
+      {
+        "temperature": 25.5,
+        "tempSensorFound": true,
+        "fanSpeedPercent": 50,
+        "fanRpm": 1200,
+        "mode": "AUTO",
+        "manualSetSpeed": 60,
+        "ipAddress": "192.168.1.123",
+        "wifiRSSI": -55
+      }
+      ```
+    * This message is retained and published periodically or on significant state changes.
+
+3.  **Controlling the Fan Controller via MQTT:**
+    * **Set Mode:**
+        * **Topic:** `YOUR_BASE_TOPIC/mode/set`
+        * **Payload:** Send `AUTO` or `MANUAL` as a string.
+    * **Set Manual Speed:** (Only effective if mode is MANUAL)
+        * **Topic:** `YOUR_BASE_TOPIC/speed/set`
+        * **Payload:** Send a number from `0` to `100` as a string (e.g., `"75"`).
+
+**Example using an MQTT client (like MQTT Explorer or mosquitto\_pub/sub):**
+
+* **To set mode to MANUAL:**
+    `mosquitto_pub -h YOUR_BROKER_IP -t "YOUR_BASE_TOPIC/mode/set" -m "MANUAL"`
+* **To set manual speed to 65% (assuming it's in MANUAL mode):**
+    `mosquitto_pub -h YOUR_BROKER_IP -t "YOUR_BASE_TOPIC/speed/set" -m "65"`
+* **To listen to all status messages:**
+    `mosquitto_sub -h YOUR_BROKER_IP -t "YOUR_BASE_TOPIC/#" -v`
+
+Replace `YOUR_BASE_TOPIC` and `YOUR_BROKER_IP` with your actual configured values.
 
 [Previous Chapter: Setup and Installation](04-setup-and-installation.md) | [Next Chapter: Technical Details & Protocols](06-technical-details.md)

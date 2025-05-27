@@ -41,7 +41,7 @@ This chapter delves into the specific technologies, protocols, and implementatio
        fanRpm \= (currentPulses / PULSES\_PER\_REVOLUTION) \* (60000.0f / elapsedMillis);  
        (60000.0f converts milliseconds to minutes).
 
-## **6.4. WiFi and Networking**
+## **6.4. WiFi and Networking (Web Server & WebSockets)**
 
 * **WiFi Client Mode (STA):** The ESP32 connects to an existing WiFi network using WiFi.begin(ssid, password).  
 * **ESPAsyncWebServer Library:**  
@@ -49,13 +49,45 @@ This chapter delves into the specific technologies, protocols, and implementatio
   * server.on("/path", HTTP\_GET, handlerFunction) is used to define routes.  
   * In this project, it serves index.html, style.css, and script.js from SPIFFS.  
 * **WebSockets (WebSocketsServer library by Markus Sattler):**  
-  * Provides a persistent, full-duplex communication channel over a single TCP connection.  
+  * Provides a persistent, full-duplex communication channel over a single TCP connection for the web UI.  
   * webSocket.begin(): Starts the WebSocket server (typically on port 81).  
-  * webSocket.onEvent(webSocketEvent): Registers a callback function (webSocketEvent) to handle WebSocket events like client connections, disconnections, and incoming text/binary messages.  
-  * webSocket.broadcastTXT(jsonData): Sends a text message (JSON string in this case) to all connected WebSocket clients.  
+  * webSocket.onEvent(webSocketEvent): Registers a callback function (webSocketEvent) to handle WebSocket events.  
+  * webSocket.broadcastTXT(jsonData): Sends a JSON string to all connected WebSocket clients.  
   * **Data Format:** JSON (JavaScript Object Notation) is used for exchanging structured data between the ESP32 and the web UI. ArduinoJson library handles serialization and deserialization.
 
-## **6.5. SPIFFS Filesystem Usage**
+## **6.5. MQTT Integration for Home Automation**
+
+The controller supports MQTT for integration with home automation platforms.
+
+* **Protocol:** MQTT (Message Queuing Telemetry Transport) is a lightweight publish-subscribe network protocol ideal for IoT devices.  
+* **Library:** The PubSubClient library by Nick O'Leary is used for MQTT communication.  
+* **Configuration:**  
+  * MQTT can be enabled/disabled.  
+  * Broker settings (server address, port, username, password) and a base topic are configurable via the LCD menu or serial commands.  
+  * These settings are stored persistently in NVS under the "mqtt-cfg" namespace.  
+* **Connection:**  
+  * The mqtt\_handler.cpp module manages the connection to the MQTT broker.  
+  * It attempts to connect if MQTT is enabled and WiFi is available. Reconnection attempts are made periodically if the connection drops.  
+  * **Last Will and Testament (LWT):** The client sets an LWT to publish an "offline" message to the availability topic if it disconnects unexpectedly.  
+* **Topics and Payloads:**  
+  * All topics are prefixed with the user-configured mqttBaseTopic.  
+  * **Availability Topic:** (e.g., YOUR\_BASE\_TOPIC/online\_status)  
+    * Publishes online when connected, offline as LWT. Retained message.  
+  * **Status Topic (JSON):** (e.g., YOUR\_BASE\_TOPIC/status\_json)  
+    * Publishes a JSON object containing temperature, sensor status, fan speed percentage, fan RPM, current mode, manual set speed, IP address, and WiFi RSSI.  
+    * Published periodically and on significant state changes. Retained message.  
+    * Example payload: {"temperature":25.5,"tempSensorFound":true,"fanSpeedPercent":50,"fanRpm":1200,"mode":"AUTO", ...}  
+  * **Command Topics:**  
+    * **Mode Set:** (e.g., YOUR\_BASE\_TOPIC/mode/set)  
+      * Payload: AUTO or MANUAL (case-insensitive string).  
+    * **Manual Speed Set:** (e.g., YOUR\_BASE\_TOPIC/speed/set)  
+      * Payload: Integer string from 0 to 100\. Only effective in MANUAL mode.  
+* **Processing:**  
+  * The mqttCallback function in mqtt\_handler.cpp processes incoming messages on subscribed command topics.  
+  * The networkTask (Core 0\) is responsible for running mqttClient.loop() and triggering status publishes.  
+* **JSON Handling:** The ArduinoJson library is used for creating the JSON status payload.
+
+## **6.6. SPIFFS Filesystem Usage**
 
 * **SPI Flash File System (SPIFFS):** A lightweight filesystem designed for microcontrollers with SPI flash memory.  
 * **Usage:** Stores the web interface files (index.html, style.css, script.js).  
@@ -64,7 +96,7 @@ This chapter delves into the specific technologies, protocols, and implementatio
   request-\>send(SPIFFS, "/filename.ext", "content\_type");  
 * **Uploading Files:** In PlatformIO, a data directory is created in the project root. Web files are placed here, and the "Upload Filesystem Image" task (pio run \-t uploadfs) builds and uploads the SPIFFS image.
 
-## **6.6. NVS (Non-Volatile Storage) for Persistence**
+## **6.7. NVS (Non-Volatile Storage) for Persistence**
 
 * **Non-Volatile Storage:** The ESP32 provides a region of its flash memory for NVS, allowing data to be stored persistently across reboots.  
 * **Preferences.h Library:** The Arduino ESP32 core provides this library to easily read and write key-value pairs to NVS.  
@@ -76,9 +108,10 @@ This chapter delves into the specific technologies, protocols, and implementatio
   * preferences.end(): Closes the namespace.  
 * **Stored Settings:**  
   * wifi-cfg namespace: ssid, password, wifiEn (WiFi enabled state).  
+  * **mqtt-cfg namespace: mqttEn (MQTT enabled state), mqttSrv (server), mqttPrt (port), mqttUsr (user), mqttPwd (password), mqttTop (base topic).**  
   * fan-curve namespace: numPoints, and individual curve points (tP0, pP0, etc.).
 
-## **6.7. Conditional Debug Mode**
+## **6.8. Conditional Debug Mode**
 
 * **Activation:** A physical GPIO pin (DEBUG\_ENABLE\_PIN) is read during setup(). It's configured with an internal pull-down resistor. If this pin is HIGH (e.g., connected to 3.3V via a jumper or switch), debug mode is enabled.  
 * **Serial Output:**  
@@ -87,7 +120,7 @@ This chapter delves into the specific technologies, protocols, and implementatio
 * **Serial Command Interface:** The handleSerialCommands() function is only called in mainAppTask if serialDebugEnabled is true.  
 * **Debug LED:** LED\_DEBUG\_PIN (GPIO2) is turned ON if debug mode is active, providing a visual indicator.
 
-## **6.8. Dual-Core Operation (FreeRTOS Tasks)**
+## **6.9. Dual-Core Operation (FreeRTOS Tasks)**
 
 The ESP32's dual cores are utilized via FreeRTOS tasks to improve performance and responsiveness:
 
@@ -95,7 +128,7 @@ The ESP32's dual cores are utilized via FreeRTOS tasks to improve performance an
   * networkTask \-\> Core 0 (PRO\_CPU)  
   * mainAppTask \-\> Core 1 (APP\_CPU)  
 * **Task Responsibilities:**  
-  * **networkTask (Core 0):** Handles all potentially blocking network operations (WiFi, web server, WebSockets). This prevents network latency or activity from delaying the main control loop. It only runs if WiFi is enabled.  
+  * **networkTask (Core 0):** Handles all potentially blocking network operations (WiFi, web server, WebSockets, **MQTT client**). This prevents network latency or activity from delaying the main control loop. It only runs if WiFi is enabled. MQTT client runs if both WiFi and MQTT are enabled.  
   * **mainAppTask (Core 1):** Executes the primary application logic: sensor reading, button processing, LCD updates, fan control calculations, and serial command handling.  
 * **Inter-Task Communication:**  
   * **volatile variables:** Used for simple shared state flags and data that can be read/written by different tasks or ISRs (e.g., currentTemperature, fanRpm, isAutoMode).  

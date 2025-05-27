@@ -8,4 +8,8 @@ void loadWiFiConfig();
 void saveFanCurveToNVS();
 void loadFanCurveFromNVS();
 
+// MQTT NVS Functions
+void saveMqttConfig();
+void loadMqttConfig();
+
 #endif // NVS_HANDLER_H
