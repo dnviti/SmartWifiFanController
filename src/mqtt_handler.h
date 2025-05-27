@@ -12,14 +12,16 @@ extern String mqttAvailabilityTopic;
 extern String mqttFanCurveGetTopic;    // New: For requesting the current curve
 extern String mqttFanCurveStatusTopic; // New: For publishing the current curve
 extern String mqttFanCurveSetTopic;    // New: For setting a new curve
+extern String mqttFanCommandTopic;     // New: For HA Fan component on/off
 
 // Function declarations
 void setupMQTT();
 void connectMQTT();
 void loopMQTT();
 void publishStatusMQTT();
-void publishFanCurveMQTT(); // New: Function to publish the fan curve
+void publishFanCurveMQTT(); 
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void publishMqttAvailability(bool available);
+void publishMqttDiscovery(); // New: Function to publish Home Assistant discovery messages
 
 #endif // MQTT_HANDLER_H

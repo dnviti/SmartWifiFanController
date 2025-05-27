@@ -79,6 +79,12 @@ char mqttUser[64] = "";                      // Default, load from NVS
 char mqttPassword[64] = "";                  // Default, load from NVS
 char mqttBaseTopic[64] = "fancontroller";    // Default, load from NVS
 
+// MQTT Discovery Configuration
+volatile bool isMqttDiscoveryEnabled = true; // Default to true. Can be made configurable later.
+char mqttDiscoveryPrefix[32] = "homeassistant"; // Default Home Assistant prefix. Load from NVS if made configurable.
+char mqttDeviceId[64] = "esp32fanctrl";   // Will be dynamically set in setup()
+char mqttDeviceName[64] = "ESP32 Fan Controller"; // Default, can be made configurable
+
 
 // Global Objects
 Preferences preferences;
@@ -114,6 +120,7 @@ void setup() {
         while(!Serial && millis() < 1000); 
         delay(100); 
         Serial.println("\n[SYSTEM] Serial Debug ENABLED. Fan Controller Initializing...");
+        Serial.printf("[SYSTEM] Firmware Version: %s\n", FIRMWARE_VERSION);
         Serial.println("Type 'help' for a list of serial commands.");
     } 
     
@@ -132,6 +139,19 @@ void setup() {
 
     loadWiFiConfig(); 
     loadMqttConfig(); // Load MQTT settings from NVS
+    // loadMqttDiscoveryConfig(); // TODO: Implement if discovery prefix/enable needs to be stored in NVS
+
+    // Dynamically set mqttDeviceId based on MAC address to ensure uniqueness
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA); // Get MAC address
+    snprintf(mqttDeviceId, sizeof(mqttDeviceId), "esp32fanctrl_%02X%02X%02X", mac[3], mac[4], mac[5]);
+    // Optionally, if a custom device name is set via NVS, it could override the default here.
+    // For now, mqttDeviceName remains the default "ESP32 Fan Controller".
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device ID set to: %s\n", mqttDeviceId);
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device Name: %s\n", mqttDeviceName);
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Discovery Prefix: %s, Enabled: %s\n", mqttDiscoveryPrefix, isMqttDiscoveryEnabled ? "Yes" : "No");
+
+
     Wire.begin(); 
 
     if(serialDebugEnabled) Serial.println("[INIT] Initializing BMP280 sensor...");

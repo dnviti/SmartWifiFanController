@@ -13,6 +13,9 @@
 #include <Preferences.h>
 #include <PubSubClient.h> // Added for MQTT
 
+// --- Firmware Version ---
+#define FIRMWARE_VERSION "1.1.0-discovery" // Define firmware version
+
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
 extern const int BTN_MENU_PIN;    
@@ -51,6 +54,8 @@ enum MenuScreen {
     MAIN_MENU, 
     WIFI_SETTINGS, WIFI_SCAN, WIFI_PASSWORD_ENTRY, WIFI_STATUS, 
     MQTT_SETTINGS, MQTT_SERVER_ENTRY, MQTT_PORT_ENTRY, MQTT_USER_ENTRY, MQTT_PASS_ENTRY, MQTT_TOPIC_ENTRY,
+    // ADDED: MQTT Discovery Menu Item (Placeholder for future UI toggle)
+    // MQTT_DISCOVERY_SETTINGS, 
     VIEW_STATUS, 
     CONFIRM_REBOOT 
 };
@@ -90,7 +95,11 @@ extern int mqttPort;
 extern char mqttUser[64];
 extern char mqttPassword[64]; // Re-use passwordInputBuffer for entry if desired, then copy here
 extern char mqttBaseTopic[64];
-
+// --- MQTT Discovery Configuration ---
+extern volatile bool isMqttDiscoveryEnabled; // Toggle for enabling/disabling MQTT Discovery
+extern char mqttDiscoveryPrefix[32];     // Home Assistant discovery prefix (default "homeassistant")
+extern char mqttDeviceId[64];            // Unique device ID for MQTT, derived from baseTopic or MAC
+extern char mqttDeviceName[64];          // Friendly name for the device in Home Assistant
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;
