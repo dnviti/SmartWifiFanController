@@ -4,30 +4,33 @@ This chapter explains how to interact with and use the ESP32 PC Fan Controller a
 
 ## **5.1. First Boot and Initial State**
 
-* **Power On:** After uploading the firmware and filesystem, power on your ESP32 fan controller.  
-* **Debug Mode Check:** * If the DEBUG\_ENABLE\_PIN is connected to HIGH (3.3V) at boot:  
-    * The onboard LED\_DEBUG\_PIN (GPIO2) will turn ON.  
-    * Serial output will be active at 115200 baud. You can open the Serial Monitor in PlatformIO/Arduino IDE to see boot messages and interact with the serial command interface. The first message should indicate that Serial Debug is enabled.  
-  * If the DEBUG\_ENABLE_PIN is LOW (or floating, due to INPUT\_PULLDOWN):  
-    * The LED\_DEBUG\_PIN will be OFF.  
-    * The Serial port will be completely inactive; no messages will be printed.  
-* **Initial WiFi & MQTT State:** By default (and on first boot if NVS is empty), `isWiFiEnabled` and `isMqttEnabled` are set to false. The device will **not** attempt to connect to any WiFi network or MQTT broker.  
-* **LCD Display:** The LCD will initialize and show "Fan Controller" and "Booting..." briefly. Once the mainAppTask starts, it will switch to the normal status display:  
-  * Line 1: Mode (e.g., "AUTO"), and WiFi status ("WiFi OFF", "WiFi...", or IP address). May also show MQTT connection status (e.g., "M" or "m").  
-  * Line 2: Temperature (or "N/A"), Fan Speed %, and RPM.  
-* **Fan State:** The fan will initially be set to 0% speed.  
+* **Power On:** After uploading the firmware and filesystem, power on your ESP32 fan controller.
+* **Debug Mode Check:**
+  * If the DEBUG\_ENABLE\_PIN is connected to HIGH (3.3V) at boot:
+    * The onboard LED\_DEBUG\_PIN (GPIO2) will turn ON.
+    * Serial output will be active at 115200 baud. You can open the Serial Monitor in PlatformIO/Arduino IDE to see boot messages and interact with the serial command interface. The first message should indicate that Serial Debug is enabled.
+  * If the DEBUG\_ENABLE_PIN is LOW (or floating, due to INPUT\_PULLDOWN):
+    * The LED\_DEBUG\_PIN will be OFF.
+    * The Serial port will be completely inactive; no messages will be printed.
+* **Initial WiFi & MQTT State:** By default (and on first boot if NVS is empty), `isWiFiEnabled` and `isMqttEnabled` are set to false. The device will **not** attempt to connect to any WiFi network or MQTT broker.
+* **LCD Display:** The LCD will initialize and show "Fan Controller" and "Booting..." briefly. Once the mainAppTask starts, it will switch to the normal status display:
+  * Line 1: Mode (e.g., "AUTO"), and WiFi status ("WiFi OFF", "WiFi...", or IP address). May also show MQTT connection status (e.g., "M" or "m").
+  * Line 2: Temperature (or "N/A"), Fan Speed %, and RPM.
+* **Fan State:** The fan will initially be set to 0% speed.
 * **Settings:** Default fan curve will be active. Other settings (WiFi, MQTT) will be loaded from NVS if previously saved, otherwise defaults will apply.
 
 ## **5.2. LCD Menu Navigation**
 
 The primary way to configure the device standalone is through the LCD menu system using the five physical buttons.
 
-* **Button Functions:** * BTN\_MENU\_PIN: Press to enter the main menu. Press again while in the main menu (or use the "Back" option) to exit to the normal status display.  
-  * BTN\_UP\_PIN: Navigate upwards in menu lists, or cycle through characters/values in edit modes.  
-  * BTN\_DOWN\_PIN: Navigate downwards in menu lists, or cycle through characters/values in edit modes.  
-  * BTN\_SELECT\_PIN: Confirm a menu selection, enter a submenu, or confirm a character/value in edit modes.  
+* **Button Functions:**
+  * BTN\_MENU\_PIN: Press to enter the main menu. Press again while in the main menu (or use the "Back" option) to exit to the normal status display.
+  * BTN\_UP\_PIN: Navigate upwards in menu lists, or cycle through characters/values in edit modes.
+  * BTN\_DOWN\_PIN: Navigate downwards in menu lists, or cycle through characters/values in edit modes.
+  * BTN\_SELECT\_PIN: Confirm a menu selection, enter a submenu, or confirm a character/value in edit modes.
   * BTN\_BACK\_PIN: Go back to the previous menu screen, or cancel an action. In input entry, it acts as a backspace or confirms current input and exits.
-* **Main Menu Flow:** 1. **Normal Status Display**
+* **Main Menu Flow:**
+  1. **Normal Status Display**
      * Press BTN\_MENU\_PIN -> **Main Menu**
        * \>WiFi Settings
        * MQTT Settings

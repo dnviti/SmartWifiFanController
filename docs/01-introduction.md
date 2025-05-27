@@ -13,7 +13,8 @@ Many PC users, especially those building custom systems or pushing their hardwar
 This ESP32-based project addresses these points by:
 
 * **Offering Deep Customization:** Users can define precise fan curves, control multiple aspects of the system, and even extend the functionality due to its open nature.  
-* **Providing Multiple Control Interfaces:** Catering to different user preferences, whether it's direct physical interaction via an LCD, remote control via a web browser, technical interaction via a serial console, **or integration with home automation via MQTT.** * **Leveraging Modern Microcontroller Capabilities:** The ESP32's dual-core processor, built-in WiFi, and ample GPIOs make it an ideal platform for such a feature-rich device.  
+* **Providing Multiple Control Interfaces:** Catering to different user preferences, whether it's direct physical interaction via an LCD, remote control via a web browser, technical interaction via a serial console, **or integration with home automation via MQTT.**  
+* **Leveraging Modern Microcontroller Capabilities:** The ESP32's dual-core processor, built-in WiFi, and ample GPIOs make it an ideal platform for such a feature-rich device.  
 * **Being an Educational Platform:** Building this project offers insights into embedded systems, PWM control, sensor integration, web servers on microcontrollers, real-time operating system (RTOS) concepts, **and IoT communication protocols like MQTT.**
 
 ## **1.3. Key Goals**
@@ -24,13 +25,15 @@ The primary objectives of this project are:
 * **Automation:** Enable automatic fan speed adjustment based on (optional) temperature sensor readings via a user-configurable multi-point fan curve.  
 * **Manual Override:** Provide users the ability to manually set and hold specific fan speeds, irrespective of temperature.  
 * **Real-time Monitoring:** Display critical system parameters including current temperature (if sensor present), current fan speed (as a percentage), and actual fan RPM (via tachometer feedback).  
-* **Multiple Interfaces:** * **LCD & Buttons:** An intuitive onboard menu system for standalone configuration and status display.  
+* **Multiple Interfaces:**  
+  * **LCD & Buttons:** An intuitive onboard menu system for standalone configuration and status display.  
   * **Web UI:** A responsive web interface for remote monitoring and configuration when WiFi is enabled.  
   * **Serial Console:** A command-line interface for debugging, advanced configuration, and diagnostics, activated by a dedicated debug pin.  
   * **MQTT:** Integration for publishing status and receiving commands from home automation systems.  
-* **Flexibility & Modularity:** * Make WiFi connectivity an optional feature, configurable by the user.  
+* **Flexibility & Modularity:**  
+  * Make WiFi connectivity an optional feature, configurable by the user.  
   * Make the temperature sensor an optional component, with graceful fallback behavior if not present.  
-  * Make MQTT connectivity an optional feature, configurable by the user.
+  * Make MQTT connectivity an optional feature, configurable by the user.  
 * **Persistence:** Store all user settings (WiFi credentials, MQTT configuration, fan curve, operational states) in the ESP32's non-volatile memory (NVS) to ensure they persist across reboots and power cycles.  
 * **Efficiency & Responsiveness:** Leverage the ESP32's dual-core architecture with FreeRTOS to separate network handling from the main control loop, ensuring responsive performance.  
 * **Debuggability:** Include comprehensive serial logging (conditionally enabled) and an onboard LED indicator for debug mode status.  
@@ -48,11 +51,11 @@ The primary objectives of this project are:
 * Optional WiFi connectivity:  
   * Web interface served from SPIFFS for remote monitoring and configuration.  
   * Real-time data synchronization using WebSockets.  
-* **Optional MQTT Connectivity:**
-  * Publishes device status (temperature, fan speed, RPM, mode) to configurable topics.
-  * Subscribes to command topics for remote control (mode, manual speed).
-  * Configurable broker details (server, port, user, password, base topic) and enable/disable state via LCD menu and serial commands.
-  * Supports MQTT Last Will and Testament (LWT) for availability status.
+* **Optional MQTT Connectivity:**  
+  * Publishes device status (temperature, fan speed, RPM, mode) to configurable topics.  
+  * Subscribes to command topics for remote control (mode, manual speed).  
+  * Configurable broker details (server, port, user, password, base topic) and enable/disable state via LCD menu and serial commands.  
+  * Supports MQTT Last Will and Testament (LWT) for availability status.  
 * Full WiFi and MQTT configuration manageable via the LCD menu and serial commands.  
 * Persistent storage of all critical settings in NVS.  
 * Dual-core operation for enhanced performance:  
