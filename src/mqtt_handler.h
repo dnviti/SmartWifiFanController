@@ -9,14 +9,27 @@ extern String mqttStatusTopic;
 extern String mqttModeCommandTopic;
 extern String mqttSpeedCommandTopic;
 extern String mqttAvailabilityTopic;
-extern String mqttFanCurveGetTopic;    // New: For requesting the current curve
-extern String mqttFanCurveStatusTopic; // New: For publishing the current curve
-extern String mqttFanCurveSetTopic;    // New: For setting a new curve
-extern String mqttFanCommandTopic;     // New: For HA Fan component on/off
+extern String mqttFanCurveGetTopic;    
+extern String mqttFanCurveStatusTopic; 
+extern String mqttFanCurveSetTopic;    
+extern String mqttFanCommandTopic;     
 
-// ADDED: Topics for new controllable entities
-extern String mqttDiscoveryConfigCommandTopic; // For enabling/disabling discovery itself via MQTT
-extern String mqttRebootCommandTopic;          // For triggering a reboot via MQTT
+// Topics for controllable entities (settings that make sense to control via HA)
+extern String mqttDiscoveryConfigCommandTopic; // For enabling/disabling discovery (the boolean setting)
+extern String mqttRebootCommandTopic;          
+extern String mqttDiscoveryPrefixSetCommandTopic; // To set the discovery prefix string
+
+// REMOVED topics for WiFi and core MQTT client config:
+// extern String mqttWifiEnableCommandTopic;
+// extern String mqttWifiSsidCommandTopic;
+// extern String mqttWifiConnectCommandTopic;
+// extern String mqttWifiDisconnectCommandTopic;
+// extern String mqttMqttEnableCommandTopic; // For the MQTT client setting itself
+// extern String mqttBrokerServerCommandTopic;
+// extern String mqttBrokerPortCommandTopic;
+// extern String mqttBrokerUserCommandTopic;
+// extern String mqttBaseTopicCommandTopic;
+
 
 // Function declarations
 void setupMQTT();
