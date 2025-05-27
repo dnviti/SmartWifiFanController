@@ -12,4 +12,8 @@ void loadFanCurveFromNVS();
 void saveMqttConfig();
 void loadMqttConfig();
 
+// MQTT Discovery NVS Functions - ADDED
+void saveMqttDiscoveryConfig();
+void loadMqttDiscoveryConfig();
+
 #endif // NVS_HANDLER_H

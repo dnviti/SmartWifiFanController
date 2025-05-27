@@ -67,7 +67,21 @@
       </div>
       <button onclick="saveMqttConfig()" class="secondary">Save MQTT Config</button>
       <p class="reboot-notice hidden" id="mqttRebootNotice">A reboot is required for MQTT settings to take full effect.</p>
-    </div>
+      
+      <div id="mqttDiscoveryFieldsContainer" class="hidden" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+        <h3>MQTT Discovery (Home Assistant)</h3>
+        <div class="config-item">
+          <label for="mqttDiscoveryEnable">Discovery Enabled:</label>
+          <input type="checkbox" id="mqttDiscoveryEnable">
+        </div>
+        <div class="config-item">
+          <label for="mqttDiscoveryPrefix">Discovery Prefix:</label>
+          <input type="text" id="mqttDiscoveryPrefix" placeholder="e.g., homeassistant">
+        </div>
+        <button onclick="saveMqttDiscoveryConfig()" class="secondary">Save Discovery Config</button>
+         <p class="reboot-notice hidden" id="mqttDiscoveryRebootNotice">A reboot is required for Discovery settings to take full effect.</p>
+      </div>
+      </div>
     </div> 
 
   <script src="script.js"></script>

@@ -1,6 +1,6 @@
 #include "network_handler.h"
 #include "config.h"      // For global variables, server, webSocket objects
-#include "nvs_handler.h" // For saveFanCurveToNVS, saveMqttConfig
+#include "nvs_handler.h" // For saveFanCurveToNVS, saveMqttConfig, saveMqttDiscoveryConfig
 #include <SPIFFS.h>
 #include <ArduinoJson.h> // Ensure it's included for both send and receive
 
@@ -9,7 +9,12 @@ void broadcastWebSocketData() {
     
     ArduinoJson::JsonDocument jsonDoc; 
 
-    jsonDoc["temperature"] = tempSensorFound ? currentTemperature : -999.0; 
+    // Corrected: Use if/else for assigning temperature or null
+    if (tempSensorFound) {
+        jsonDoc["temperature"] = currentTemperature;
+    } else {
+        jsonDoc["temperature"] = nullptr; 
+    }
     jsonDoc["tempSensorFound"] = tempSensorFound; 
     jsonDoc["fanSpeed"] = fanSpeedPercentage;
     jsonDoc["isAutoMode"] = isAutoMode;
@@ -34,17 +39,21 @@ void broadcastWebSocketData() {
     // DO NOT send mqttPassword back to the client
     jsonDoc["mqttBaseTopic"] = mqttBaseTopic;
 
+    // ADDED: MQTT Discovery Configuration Data
+    jsonDoc["isMqttDiscoveryEnabled"] = isMqttDiscoveryEnabled;
+    jsonDoc["mqttDiscoveryPrefix"] = mqttDiscoveryPrefix;
+
 
     String jsonString;
     serializeJson(jsonDoc, jsonString);
     webSocket.broadcastTXT(jsonString);
-    if (serialDebugEnabled && millis() % 60000 < 100) { // Log broadcast data occasionally to avoid spam
+    if (serialDebugEnabled && millis() % 60000 < 100) { 
         Serial.print("[WS_BCAST] "); Serial.println(jsonString);
     }
 }
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-    if (!isWiFiEnabled) return; // Should not happen if WS is active, but good check
+    if (!isWiFiEnabled) return; 
 
     switch(type) {
         case WStype_DISCONNECTED:
@@ -53,8 +62,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
         case WStype_CONNECTED: {
             IPAddress ip = webSocket.remoteIP(num);
             if(serialDebugEnabled) Serial.printf("[WS][%u] Client Connected from %s, URL: %s\n", num, ip.toString().c_str(), (char *)payload);
-            // Send initial data to the newly connected client
-            needsImmediateBroadcast = true; // This will trigger broadcastWebSocketData in the networkTask loop
+            needsImmediateBroadcast = true; 
             break;
         }
         case WStype_TEXT: {
@@ -103,7 +111,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
 
                         for(int i=0; i < newNumPoints; ++i) {
                             ArduinoJson::JsonObject point = newCurve[i];
-                            // Updated check using obj[key].is<T>()
                             if (!point["temp"].is<int>() || !point["pwmPercent"].is<int>()) {
                                 curveValid = false;
                                 if(serialDebugEnabled) Serial.printf("[WS_ERR] Curve point %d missing temp or pwmPercent, or wrong type.\n", i);
@@ -164,19 +171,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                             strcpy(mqttUser, newMqttUser.c_str()); changed = true;
                         }
                     }
-                    // Updated check using doc[key].is<T>()
-                    // Only update password if a new one was actually sent in the payload and is a string
                     if (doc["mqttPassword"].is<const char*>() && newMqttPassword.length() < sizeof(mqttPassword)) {
                          if (strcmp(mqttPassword, newMqttPassword.c_str()) != 0) {
                             strcpy(mqttPassword, newMqttPassword.c_str()); changed = true;
                          }
                     } else if (doc["mqttPassword"].is<String>() && newMqttPassword.length() < sizeof(mqttPassword) ) {
-                        // Handle if it was parsed as Arduino String object
                          if (strcmp(mqttPassword, newMqttPassword.c_str()) != 0) {
                             strcpy(mqttPassword, newMqttPassword.c_str()); changed = true;
                          }
                     }
-
 
                      if (newMqttBaseTopic.length() > 0 && newMqttBaseTopic.length() < sizeof(mqttBaseTopic)) {
                          if (strcmp(mqttBaseTopic, newMqttBaseTopic.c_str()) != 0) {
@@ -185,12 +188,47 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                     }
 
                     if (changed) {
-                        if (serialDebugEnabled) Serial.println("[SYSTEM] MQTT configuration updated via WebSocket.");
+                        if (serialDebugEnabled) Serial.println("[SYSTEM] MQTT configuration updated via WebSocket. Reboot needed.");
                         saveMqttConfig();
                         rebootNeeded = true; 
                         needsImmediateBroadcast = true; 
                     } else {
                         if (serialDebugEnabled) Serial.println("[WS] MQTT configuration received, but no changes detected.");
+                    }
+                }
+                else if (strcmp(action, "setMqttDiscoveryConfig") == 0) {
+                    if (serialDebugEnabled) Serial.println("[WS] Received MQTT Discovery configuration update.");
+                    bool changed = false;
+
+                    // Corrected: Use doc[key].is<T>() for checking existence and type
+                    if (doc["isMqttDiscoveryEnabled"].is<bool>()) {
+                        bool newDiscoveryEnabled = doc["isMqttDiscoveryEnabled"];
+                        if (isMqttDiscoveryEnabled != newDiscoveryEnabled) {
+                            isMqttDiscoveryEnabled = newDiscoveryEnabled;
+                            changed = true;
+                        }
+                    }
+
+                    // Corrected: Use doc[key].is<T>() for checking existence and type
+                    if (doc["mqttDiscoveryPrefix"].is<const char*>()) { // Or .is<String>() if that's how it's sent
+                        String newPrefix = doc["mqttDiscoveryPrefix"];
+                        if (newPrefix.length() < sizeof(mqttDiscoveryPrefix)) {
+                            if (strcmp(mqttDiscoveryPrefix, newPrefix.c_str()) != 0) {
+                                strcpy(mqttDiscoveryPrefix, newPrefix.c_str());
+                                changed = true;
+                            }
+                        } else if (serialDebugEnabled) {
+                            Serial.printf("[WS_ERR] MQTT Discovery Prefix too long: %s\n", newPrefix.c_str());
+                        }
+                    }
+                    
+                    if (changed) {
+                        if (serialDebugEnabled) Serial.println("[SYSTEM] MQTT Discovery configuration updated via WebSocket. Reboot needed.");
+                        saveMqttDiscoveryConfig();
+                        rebootNeeded = true;
+                        needsImmediateBroadcast = true;
+                    } else {
+                         if (serialDebugEnabled) Serial.println("[WS] MQTT Discovery configuration received, but no changes detected.");
                     }
                 }
                 else {

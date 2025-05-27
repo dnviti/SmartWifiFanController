@@ -60,6 +60,7 @@ volatile char currentPasswordEditChar = 'a'; // Specifically for WiFi password
 int tempPoints[MAX_CURVE_POINTS];
 int pwmPercentagePoints[MAX_CURVE_POINTS];
 int numCurvePoints = 0;
+volatile bool fanCurveChanged = false; // ADDED: Initialize flag
 
 // Staging Fan Curve for Serial Commands
 int stagingTempPoints[MAX_CURVE_POINTS];
@@ -77,6 +78,12 @@ int mqttPort = 1883;                         // Default, load from NVS
 char mqttUser[64] = "";                      // Default, load from NVS
 char mqttPassword[64] = "";                  // Default, load from NVS
 char mqttBaseTopic[64] = "fancontroller";    // Default, load from NVS
+
+// MQTT Discovery Configuration
+volatile bool isMqttDiscoveryEnabled = true; // Default to true. Loaded from NVS.
+char mqttDiscoveryPrefix[32] = "homeassistant"; // Default Home Assistant prefix. Loaded from NVS.
+char mqttDeviceId[64] = "esp32fanctrl";   // Will be dynamically set in setup()
+char mqttDeviceName[64] = "ESP32 Fan Controller"; // Default, can be made configurable
 
 
 // Global Objects
@@ -113,6 +120,7 @@ void setup() {
         while(!Serial && millis() < 1000); 
         delay(100); 
         Serial.println("\n[SYSTEM] Serial Debug ENABLED. Fan Controller Initializing...");
+        Serial.printf("[SYSTEM] Firmware Version: %s\n", FIRMWARE_VERSION);
         Serial.println("Type 'help' for a list of serial commands.");
     } 
     
@@ -130,7 +138,20 @@ void setup() {
     }
 
     loadWiFiConfig(); 
-    loadMqttConfig(); // Load MQTT settings from NVS
+    loadMqttConfig(); 
+    loadMqttDiscoveryConfig(); // ADDED: Load MQTT Discovery settings from NVS
+
+    // Dynamically set mqttDeviceId based on MAC address to ensure uniqueness
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA); // Get MAC address
+    snprintf(mqttDeviceId, sizeof(mqttDeviceId), "esp32fanctrl_%02X%02X%02X", mac[3], mac[4], mac[5]);
+    // Optionally, if a custom device name is set via NVS, it could override the default here.
+    // For now, mqttDeviceName remains the default "ESP32 Fan Controller".
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device ID set to: %s\n", mqttDeviceId);
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device Name: %s\n", mqttDeviceName);
+    if(serialDebugEnabled) Serial.printf("[INIT] MQTT Discovery Prefix (after NVS load): %s, Enabled: %s\n", mqttDiscoveryPrefix, isMqttDiscoveryEnabled ? "Yes" : "No");
+
+
     Wire.begin(); 
 
     if(serialDebugEnabled) Serial.println("[INIT] Initializing BMP280 sensor...");
@@ -191,13 +212,8 @@ void setup() {
     pinMode(BTN_BACK_PIN, INPUT_PULLUP);
     if(serialDebugEnabled) Serial.println("[INIT] Buttons Setup Complete.");
     
-    // MQTT setup is called within networkTask if enabled, after WiFi connection
-    // setupMQTT(); // This will be called from networkTask
-
     if(serialDebugEnabled) Serial.println("[INIT] Creating FreeRTOS Tasks...");
-    // Network task will handle both WiFi, WebSockets, and MQTT
-    xTaskCreatePinnedToCore(networkTask, "NetworkTask", 12000, NULL, 1, &networkTaskHandle, 0); // Stack size might need adjustment
-    
+    xTaskCreatePinnedToCore(networkTask, "NetworkTask", 12000, NULL, 1, &networkTaskHandle, 0); 
     xTaskCreatePinnedToCore(mainAppTask, "MainAppTask", 10000, NULL, 2, &mainAppTaskHandle, 1); 
 
     if(serialDebugEnabled) Serial.println("[INIT] Setup complete. Tasks launched.");

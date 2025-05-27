@@ -10,56 +10,55 @@ void updateLCD_NormalMode() {
     // WiFi Status
     if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
         String ipStr = WiFi.localIP().toString();
-        // Try to fit IP, otherwise show "WiFi ON"
-        if (line0.length() + ipStr.length() + 1 <= 16) { // +1 for space
+        if (line0.length() + ipStr.length() + 1 <= 16) { 
              line0 += " " + ipStr;
-        } else if (line0.length() + 8 <= 16) { // "WiFi ON M"
+        } else if (line0.length() + 8 <= 16) { 
              line0 += " WiFi ON";
         } else {
-            // Truncate mode if necessary to show WiFi ON
             if (line0.length() > 8) line0 = line0.substring(0,7) + ".";
             line0 += " WiFi ON";
         }
     } else if (isWiFiEnabled) {
-        if (line0.length() + 8 <= 16) line0 += " WiFi..."; // Connecting
+        if (line0.length() + 8 <= 16) line0 += " WiFi..."; 
         else { if (line0.length() > 7) line0 = line0.substring(0,6) + "."; line0 += " WiFi...";}
-    } else { // WiFi Disabled
+    } else { 
         if (line0.length() + 9 <= 16) line0 += " WiFi OFF";
         else { if (line0.length() > 6) line0 = line0.substring(0,5) + "."; line0 += " WiFi OFF";}
     }
 
     // MQTT Status Suffix (if space)
     if (isMqttEnabled && WiFi.status() == WL_CONNECTED) {
-        if (line0.length() + 2 <= 16) { // Add " M" for MQTT connected
-            line0 += (mqttClient.connected() ? " M" : " m"); // M=Connected, m=Attempting/Enabled
+        if (line0.length() + 2 <= 16) { 
+            line0 += (mqttClient.connected() ? " M" : " m"); 
+            if (isMqttDiscoveryEnabled && line0.length() + 1 <= 16){ // Add D for discovery
+                 line0 += "D";
+            }
         }
     }
-    lcd.print(line0.substring(0,16)); // Ensure it's not over length
+    lcd.print(line0.substring(0,16)); 
     
     lcd.setCursor(0, 1);
     String line1 = "T:";
     if (!tempSensorFound || currentTemperature <= -990.0) { 
         line1 += "N/A "; 
     } else {
-        line1 += String(currentTemperature, 1); // "T:25.5"
+        line1 += String(currentTemperature, 1); 
     }
     
-    // Fan Speed Percentage
-    line1 += " F:"; // "T:25.5 F:"
-    if(fanSpeedPercentage < 10) line1 += " ";   // "T:25.5 F:  5%"
-    if(fanSpeedPercentage < 100) line1 += " ";  // "T:25.5 F: 50%"
+    line1 += " F:"; 
+    if(fanSpeedPercentage < 10) line1 += " ";   
+    if(fanSpeedPercentage < 100) line1 += " ";  
     line1 += String(fanSpeedPercentage);
-    line1 += "%"; // "T:25.5 F:100%"
+    line1 += "%"; 
 
-    // RPM (if space)
     String rpmStr;
     if (fanRpm > 0) {
         if (fanRpm >= 1000) {
-            rpmStr = String(fanRpm / 1000.0, 1) + "K"; // e.g., "1.2K"
+            rpmStr = String(fanRpm / 1000.0, 1) + "K"; 
         } else {
-            rpmStr = String(fanRpm); // e.g., "800"
+            rpmStr = String(fanRpm); 
         }
-        if (line1.length() + 1 + rpmStr.length() <= 16) { // +1 for "R"
+        if (line1.length() + 1 + rpmStr.length() <= 16) { 
              line1 += "R"; 
              line1 += rpmStr;
         }
@@ -76,13 +75,14 @@ void displayMenu() {
         case WIFI_PASSWORD_ENTRY:   displayPasswordEntryMenu(); break; 
         case WIFI_STATUS:           displayWiFiStatusMenu(); break; 
         case MQTT_SETTINGS:         displayMqttSettingsMenu(); break;
-        case MQTT_SERVER_ENTRY:     displayMqttEntryMenu("MQTT Server:", mqttServer, false); break;
-        case MQTT_PORT_ENTRY:       displayMqttEntryMenu("MQTT Port:", String(mqttPort).c_str(), false, true); break;
-        case MQTT_USER_ENTRY:       displayMqttEntryMenu("MQTT User:", mqttUser, false); break;
-        case MQTT_PASS_ENTRY:       displayMqttEntryMenu("MQTT Pass:", mqttPassword, true); break;
-        case MQTT_TOPIC_ENTRY:      displayMqttEntryMenu("MQTT Topic:", mqttBaseTopic, false); break;
+        case MQTT_SERVER_ENTRY:     displayMqttEntryMenu("MQTT Server:", mqttServer, false, false, sizeof(mqttServer)-1); break;
+        case MQTT_PORT_ENTRY:       displayMqttEntryMenu("MQTT Port:", String(mqttPort).c_str(), false, true, 5); break;
+        case MQTT_USER_ENTRY:       displayMqttEntryMenu("MQTT User:", mqttUser, false, false, sizeof(mqttUser)-1); break;
+        case MQTT_PASS_ENTRY:       displayMqttEntryMenu("MQTT Pass:", mqttPassword, true, false, sizeof(mqttPassword)-1); break;
+        case MQTT_TOPIC_ENTRY:      displayMqttEntryMenu("MQTT Topic:", mqttBaseTopic, false, false, sizeof(mqttBaseTopic)-1); break;
+        case MQTT_DISCOVERY_SETTINGS: displayMqttDiscoverySettingsMenu(); break; // ADDED
+        case MQTT_DISCOVERY_PREFIX_ENTRY: displayMqttEntryMenu("Discovery Pfx:", mqttDiscoveryPrefix, false, false, sizeof(mqttDiscoveryPrefix)-1); break; // ADDED
         case CONFIRM_REBOOT:        displayConfirmRebootMenu(); break;
-        // VIEW_STATUS is handled by exiting menu mode (isInMenuMode = false)
         default: 
             lcd.print("Unknown Menu"); 
             break;
@@ -90,55 +90,43 @@ void displayMenu() {
 }
 
 void displayMainMenu() {
-    // This function assumes MAIN_MENU has 3 items:
-    // 0: WiFi Settings
-    // 1: MQTT Settings
-    // 2: View Status (exits menu)
-    // selectedMenuItem will be 0, 1, or 2.
-
-    if (selectedMenuItem == 0) { // WiFi Settings selected
+    if (selectedMenuItem == 0) { 
         lcd.setCursor(0,0); lcd.print(">WiFi Settings");
-        lcd.setCursor(0,1); lcd.print(" MQTT Settings"); // Show next item for context
-    } else if (selectedMenuItem == 1) { // MQTT Settings selected
-        lcd.setCursor(0,0); lcd.print(" WiFi Settings"); // Show previous item for context
+        lcd.setCursor(0,1); lcd.print(" MQTT Settings"); 
+    } else if (selectedMenuItem == 1) { 
+        lcd.setCursor(0,0); lcd.print(" WiFi Settings"); 
         lcd.setCursor(0,1); lcd.print(">MQTT Settings");
-    } else if (selectedMenuItem == 2) { // View Status selected
-        lcd.setCursor(0,0); lcd.print(" MQTT Settings"); // Show previous item for context
+    } else if (selectedMenuItem == 2) { 
+        lcd.setCursor(0,0); lcd.print(" MQTT Settings"); 
         lcd.setCursor(0,1); lcd.print(">View Status");
     }
-    // Ensure no reference to MAIN_MENU_ITEMS here
 }
 
 void displayWiFiSettingsMenu() {
-    // Items: "WiFi:", "Scan Networks", "SSID:", "Password Set", "Connect WiFi", "DisconnectWiFi", "Back to Main"
     const char* items[] = {"WiFi:", "Scan Networks", "SSID:", "Password Set", "Connect WiFi", "DisconnectWiFi", "Back to Main"};
     const int numItems = 7; 
 
     for (int i = 0; i < 2; ++i) { 
         int itemIndexToDisplay;
-        // Logic to display two items on the screen, with the selected one highlighted
-        if (i == 0) { // Top line of LCD
+        if (i == 0) { 
             itemIndexToDisplay = selectedMenuItem;
-            // If selected is the last item, show the second to last on the top line to keep context
             if (selectedMenuItem == numItems - 1 && numItems > 1) {
                  itemIndexToDisplay = selectedMenuItem - 1;
             }
-        } else { // Bottom line of LCD
+        } else { 
             itemIndexToDisplay = selectedMenuItem + 1;
-            // If selected is the last item, show the last item on the bottom line
             if (selectedMenuItem == numItems - 1 && numItems > 0) {
                  itemIndexToDisplay = selectedMenuItem;
             }
-            // If selected is the first item, the top line shows item 0, bottom shows item 1
             if (selectedMenuItem == 0 && numItems > 1) {
                 itemIndexToDisplay = 1;
             }
         }
         
-        if (numItems == 1 && i == 1) continue; // If only one item, don't try to print on the second line for "next"
+        if (numItems == 1 && i == 1) continue; 
 
         if (itemIndexToDisplay < 0 || itemIndexToDisplay >= numItems) {
-            lcd.setCursor(0,i); lcd.print("                "); // Clear line if out of bounds
+            lcd.setCursor(0,i); lcd.print("                "); 
             continue; 
         }
 
@@ -186,7 +174,7 @@ void displayWiFiScanMenu() {
 void displayPasswordEntryMenu() { 
     lcd.setCursor(0,0); lcd.print("WiFi Password:");
     String passMask = "";
-    for(int i=0; i < passwordCharIndex; ++i) passMask += "*";
+    for(int k=0; k < passwordCharIndex; ++k) passMask += "*"; // Changed i to k
     passMask += currentPasswordEditChar; 
     
     if (passwordCharIndex >= sizeof(passwordInputBuffer) - 2) { 
@@ -216,8 +204,9 @@ void displayConfirmRebootMenu() {
 }
 
 void displayMqttSettingsMenu() {
-    const char* items[] = {"MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Back to Main"};
-    const int numItems = 7;
+    // Items: "MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Discovery Cfg", "Back"
+    const char* items[] = {"MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Discovery Cfg", "Back to Main"};
+    const int numItems = 8; // Updated number of items
 
     for (int i = 0; i < 2; ++i) { 
         int itemIndexToDisplay;
@@ -256,27 +245,69 @@ void displayMqttSettingsMenu() {
             line += items[itemIndexToDisplay]; line += " "; line += String(mqttBaseTopic).substring(0, 16 - line.length());
         }
          else { 
-            line += items[itemIndexToDisplay];
+            line += items[itemIndexToDisplay]; // For "Discovery Cfg" and "Back to Main"
         }
         lcd.print(line.substring(0,16));
     }
 }
 
-void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly) {
+// Reused for MQTT Server, Port, User, Pass, Topic, and Discovery Prefix
+void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly, int maxLength) {
     lcd.setCursor(0,0); lcd.print(String(prompt).substring(0,16));
     
     String valueToShow = "";
     if (isPassword) {
-        for(int i=0; i < generalInputCharIndex; ++i) valueToShow += "*";
+        for(int k=0; k < generalInputCharIndex; ++k) valueToShow += "*"; // Changed i to k
     } else {
-        valueToShow = String(generalInputBuffer).substring(0, generalInputCharIndex);
+        // Display the content of generalInputBuffer up to generalInputCharIndex
+        // This buffer is actively being edited.
+        for(int k=0; k<generalInputCharIndex; ++k) valueToShow += generalInputBuffer[k];
     }
     valueToShow += currentGeneralEditChar; 
     
-    int maxLength = isNumericOnly ? 5 : (sizeof(generalInputBuffer) - 2);
-    if (generalInputCharIndex >= maxLength) {
+    // Use the passed maxLength for the check, not sizeof(generalInputBuffer) directly
+    // as generalInputBuffer might be larger than the specific field's max length (e.g. mqttDiscoveryPrefix)
+    if (generalInputCharIndex >= maxLength -1 ) { // -1 because currentGeneralEditChar is next, and we need space for null term
         valueToShow += " [OK?]";
     }
 
     lcd.setCursor(0,1); lcd.print(valueToShow.substring(0,16));
+}
+
+// ADDED: MQTT Discovery Settings Menu
+void displayMqttDiscoverySettingsMenu() {
+    const char* items[] = {"Discovery:", "Prefix:", "Back"};
+    const int numItems = 3;
+
+    for (int i = 0; i < 2; ++i) { 
+        int itemIndexToDisplay;
+        if (i == 0) { 
+            itemIndexToDisplay = selectedMenuItem;
+            if (selectedMenuItem == numItems - 1 && numItems > 1) itemIndexToDisplay = selectedMenuItem - 1; 
+        } else { 
+            itemIndexToDisplay = selectedMenuItem + 1;
+            if (selectedMenuItem == numItems - 1 && numItems > 0) itemIndexToDisplay = selectedMenuItem; 
+            if (selectedMenuItem == 0 && numItems > 1) itemIndexToDisplay = selectedMenuItem +1; 
+        }
+        
+        if (numItems == 1 && i == 1) continue;
+
+        if (itemIndexToDisplay < 0 || itemIndexToDisplay >= numItems) {
+            lcd.setCursor(0,i); lcd.print("                ");
+            continue; 
+        }
+
+        lcd.setCursor(0, i);
+        String line = "";
+        if (itemIndexToDisplay == selectedMenuItem) line += ">"; else line += " ";
+
+        if (itemIndexToDisplay == 0) { // Discovery Enable/Disable
+            line += items[itemIndexToDisplay]; line += " "; line += (isMqttDiscoveryEnabled ? "Enabled" : "Disabled");
+        } else if (itemIndexToDisplay == 1) { // Discovery Prefix
+            line += items[itemIndexToDisplay]; line += " "; line += String(mqttDiscoveryPrefix).substring(0, 16 - line.length());
+        } else { // Back
+            line += items[itemIndexToDisplay];
+        }
+        lcd.print(line.substring(0,16));
+    }
 }
