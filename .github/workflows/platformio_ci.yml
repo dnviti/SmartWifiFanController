@@ -5,10 +5,10 @@ on:
   push:
     branches:
       - main
-      - develop # You can adjust or remove this if you don't use a 'develop' branch
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   test:
