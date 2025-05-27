@@ -1,0 +1,84 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on tags like v1.0, v1.2.3, v2.0.0-beta.1
+
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to create releases and upload assets
+
+    steps:
+      - name: Checkout code at the specific tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }} # Checks out the code at the specific tag that triggered the workflow
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install PlatformIO Core
+        run: pip install -U platformio
+
+      - name: Cache PlatformIO data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+            .pio/libdeps
+          key: ${{ runner.os }}-pio-release-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-release-
+
+      - name: Install project dependencies
+        run: pio pkg install
+
+      - name: Build firmware
+        id: build_firmware # Give an ID to this step to access its outputs if needed
+        run: pio run -e upesy_wroom # Replace 'upesy_wroom' with your PIO environment
+
+      - name: Get Release Version from Tag
+        id: get_version
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        # This extracts 'v1.0.0' from 'refs/tags/v1.0.0'
+
+      - name: Determine if Pre-release
+        id: is_prerelease
+        run: |
+          if [[ "${{ env.RELEASE_VERSION }}" == *-* ]]; then
+            echo "PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "PRERELEASE=false" >> $GITHUB_ENV
+          fi
+        # Checks if the version string contains a hyphen (e.g., v1.0.0-beta)
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2 # A popular action for creating releases
+        with:
+          tag_name: ${{ github.ref_name }} # Use the tag that triggered the workflow
+          name: Release ${{ github.ref_name }}
+          body: | # You can customize the release body.
+            Release of version ${{ github.ref_name }}.
+            See README.md attached for details.
+            (You could auto-generate a changelog here in a more advanced setup)
+          draft: false
+          prerelease: ${{ env.PRERELEASE }}
+          files: | # List of files to upload as assets
+            README.md
+            .pio/build/upesy_wroom/firmware.bin # Adjust path if your environment or output name is different
+            # You can add more files here, e.g., SPIFFS image:
+            # .pio/build/upesy_wroom/spiffs.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is automatically provided by GitHub Actions
+
+      - name: Output Release URL
+        run: echo "Release URL: ${{ steps.create_release.outputs.html_url }}"
+

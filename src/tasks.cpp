@@ -1,61 +1,100 @@
 #include "tasks.h"
 #include "config.h"
-#include "network_handler.h" // For setupWebServerRoutes, webSocketEvent, broadcastWebSocketData
-#include "input_handler.h"   // For handleSerialCommands, handleMenuInput
-#include "fan_control.h"     // For calculateAutoFanPWMPercentage, setFanSpeed
-#include "display_handler.h" // For updateLCD_NormalMode, displayMenu
+#include "network_handler.h" 
+#include "input_handler.h"   
+#include "fan_control.h"     
+#include "display_handler.h" 
+#include "mqtt_handler.h"    // Added for MQTT
 
 // --- Network Task (Core 0) ---
 void networkTask(void *pvParameters) {
     if(serialDebugEnabled) Serial.println("[TASK] Network Task started on Core 0.");
     unsigned long lastPeriodicBroadcastTime = 0;
+    unsigned long lastMqttStatusPublishTime = 0;
 
-    if (!isWiFiEnabled) { 
-        if(serialDebugEnabled) Serial.println("[NETWORK_TASK] WiFi is disabled by NVS config. Network task ending.");
-        vTaskDelete(NULL); 
-        return;
-    }
 
-    if(serialDebugEnabled) { Serial.print("[WiFi] NetworkTask: Attempting connection to SSID: '"); Serial.print(current_ssid); Serial.println("'");}
-    
-    if (strlen(current_ssid) > 0 && strcmp(current_ssid, "YOUR_WIFI_SSID") != 0 && strcmp(current_ssid, "") != 0 ) {
-        WiFi.mode(WIFI_STA); 
-        WiFi.begin(current_ssid, current_password);
-        int wifiTimeout = 0;
-        while (WiFi.status() != WL_CONNECTED && wifiTimeout < 30) { 
-            delay(500); if(serialDebugEnabled) Serial.print("."); 
-            wifiTimeout++;
+    // --- WiFi Connection Handling ---
+    if (isWiFiEnabled) {
+        if(serialDebugEnabled) { Serial.print("[WiFi] NetworkTask: Attempting connection to SSID: '"); Serial.print(current_ssid); Serial.println("'");}
+        
+        if (strlen(current_ssid) > 0 && strcmp(current_ssid, "YOUR_WIFI_SSID") != 0 && strcmp(current_ssid, "") != 0 ) {
+            WiFi.mode(WIFI_STA); 
+            WiFi.begin(current_ssid, current_password);
+            int wifiTimeout = 0;
+            // Wait for connection, but don't block indefinitely if WiFi settings are bad
+            while (WiFi.status() != WL_CONNECTED && wifiTimeout < 30) { // Approx 15 seconds timeout
+                vTaskDelay(pdMS_TO_TICKS(500)); 
+                if(serialDebugEnabled) Serial.print("."); 
+                wifiTimeout++;
+            }
+        } else {
+            if(serialDebugEnabled) Serial.println("[WiFi] NetworkTask: SSID not configured or is default. Skipping WiFi connection attempt.");
         }
     } else {
-        if(serialDebugEnabled) Serial.println("[WiFi] NetworkTask: SSID not configured or is default. Skipping connection attempt.");
+         if(serialDebugEnabled) Serial.println("[WiFi] NetworkTask: WiFi is disabled by NVS config. Skipping WiFi connection.");
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-        if(serialDebugEnabled) { Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
-        Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());}
+
+    // --- Service Initialization (Websocket, MQTT) if WiFi is connected ---
+    if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
+        if(serialDebugEnabled) { 
+            Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
+            Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());
+        }
         
-        setupWebServerRoutes(); // Setup routes to serve from SPIFFS
+        // Setup WebSockets
+        setupWebServerRoutes(); 
         webSocket.begin();
         webSocket.onEvent(webSocketEvent);
-        server.begin();
+        server.begin(); // Start AsyncWebServer
         if(serialDebugEnabled) Serial.println("[SYSTEM] HTTP server and WebSocket started on Core 0.");
+
+        // Setup MQTT if enabled
+        if (isMqttEnabled) {
+            setupMQTT(); // Initialize MQTT client, topics, server etc.
+            // Initial connection attempt will be handled in the loop by connectMQTT()
+        } else {
+            if(serialDebugEnabled) Serial.println("[MQTT] MQTT is disabled. Skipping MQTT setup in NetworkTask.");
+        }
+
     } else { 
-        if(serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: Connection Failed or not attempted. Web services may not be available.");
+        if(isWiFiEnabled && serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: WiFi Connection Failed or not attempted. Web/MQTT services may not be available.");
+        // If WiFi is disabled, this is normal.
     }
     
+    // --- Main Loop for Network Task ---
     for(;;) {
         if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) { 
+            // WebSocket Loop
             webSocket.loop();
             unsigned long currentTime = millis();
             if (needsImmediateBroadcast || (currentTime - lastPeriodicBroadcastTime > 5000)) { 
-                broadcastWebSocketData();
+                broadcastWebSocketData(); // Send data to web clients
+                if (isMqttEnabled) publishStatusMQTT(); // Also publish to MQTT
                 needsImmediateBroadcast = false; 
                 lastPeriodicBroadcastTime = currentTime;
+                lastMqttStatusPublishTime = currentTime; // Align MQTT periodic publish
+            }
+
+            // MQTT Loop (connection, incoming messages, periodic publish)
+            if (isMqttEnabled) {
+                loopMQTT(); // Handles connection, client.loop(), and reconnections
+                // Periodic status publish if not covered by needsImmediateBroadcast
+                if (mqttClient.connected() && (currentTime - lastMqttStatusPublishTime > 30000)) { // e.g., every 30 seconds
+                     publishStatusMQTT();
+                     lastMqttStatusPublishTime = currentTime;
+                }
             }
         } else if (isWiFiEnabled && WiFi.status() != WL_CONNECTED) {
-            // Optional: More robust retry or status update
+            // Optional: Attempt to reconnect WiFi if it drops
+            // This could be a simple WiFi.begin() again, or a more robust handler.
+            // For now, MQTT will also disconnect if WiFi drops.
+            if (serialDebugEnabled) {
+                // Serial.println("[WiFi] NetworkTask: WiFi disconnected. Trying to reconnect...");
+                // WiFi.begin(current_ssid, current_password); // Simple reconnect attempt
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(50)); 
+        vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
     }
 }
 
@@ -65,7 +104,7 @@ void mainAppTask(void *pvParameters) {
     unsigned long lastTempReadTime = 0;
     unsigned long lastRpmCalculationTime = 0;
     unsigned long lastLcdUpdateTime = 0;
-    lastRpmReadTime_Task = millis();
+    lastRpmReadTime_Task = millis(); // Initialize for RPM calculation
 
     if (isInMenuMode) displayMenu(); else updateLCD_NormalMode();
 
@@ -77,23 +116,30 @@ void mainAppTask(void *pvParameters) {
         }
         handleMenuInput();      
 
-        if (!isInMenuMode) {
+        if (!isInMenuMode) { // Only perform these actions if not in menu
+            // Read Temperature
             if (tempSensorFound) {
-                if (currentTime - lastTempReadTime > 2000) { 
+                if (currentTime - lastTempReadTime > 2000) { // Read every 2 seconds
                     lastTempReadTime = currentTime;
                     float newTemp = bmp.readTemperature();
                     if (!isnan(newTemp)) { 
-                        currentTemperature = newTemp;
+                        if (abs(newTemp - currentTemperature) > 0.05 || currentTemperature <= -990.0) { // Update if changed significantly or first read
+                           currentTemperature = newTemp;
+                           needsImmediateBroadcast = true; // Temperature changed, signal update
+                        }
                     } else {
-                        if(serialDebugEnabled) Serial.println("[SENSOR] Failed to read from BMP280 sensor!");
+                        if(serialDebugEnabled) Serial.println("[SENSOR_ERR] Failed to read from BMP280 sensor!");
+                        if (currentTemperature > -990.0) needsImmediateBroadcast = true; // Was valid, now not
                         currentTemperature = -999.0; 
                     }
                 }
-            } else {
+            } else { // Sensor not found
+                if (currentTemperature > -990.0) needsImmediateBroadcast = true; // Was valid, now not
                 currentTemperature = -999.0; 
             }
 
-            if (currentTime - lastRpmCalculationTime > 1000) { 
+            // Calculate RPM
+            if (currentTime - lastRpmCalculationTime > 1000) { // Calculate every 1 second
                 lastRpmCalculationTime = currentTime;
                 noInterrupts(); 
                 unsigned long currentPulses = pulseCount;
@@ -103,38 +149,45 @@ void mainAppTask(void *pvParameters) {
                 unsigned long elapsedMillis = currentTime - lastRpmReadTime_Task;
                 lastRpmReadTime_Task = currentTime; 
 
+                int newRpm = 0;
                 if (elapsedMillis > 0 && PULSES_PER_REVOLUTION > 0) {
-                    fanRpm = (currentPulses / (float)PULSES_PER_REVOLUTION) * (60000.0f / elapsedMillis);
-                } else {
-                    fanRpm = 0;
+                    newRpm = (currentPulses / (float)PULSES_PER_REVOLUTION) * (60000.0f / elapsedMillis);
+                }
+                if (newRpm != fanRpm) {
+                    fanRpm = newRpm;
+                    needsImmediateBroadcast = true; // RPM changed
                 }
             }
 
+            // Fan Control Logic
             int oldFanSpeedPercentage = fanSpeedPercentage; 
 
             if (isAutoMode) {
                 if (tempSensorFound) {
                     int autoPwmPerc = calculateAutoFanPWMPercentage(currentTemperature);
                     if (autoPwmPerc != fanSpeedPercentage) {
-                        setFanSpeed(autoPwmPerc);
+                        setFanSpeed(autoPwmPerc); // setFanSpeed sets needsImmediateBroadcast
                     }
-                } else { 
+                } else { // Auto mode but no sensor
                     if (AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE != fanSpeedPercentage) {
                         setFanSpeed(AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE);
                     }
                 }
-            } else { 
+            } else { // Manual mode
                 if (manualFanSpeedPercentage != fanSpeedPercentage) {
                     setFanSpeed(manualFanSpeedPercentage);
                 }
             }
             
-            if (currentTime - lastLcdUpdateTime > 1000 || oldFanSpeedPercentage != fanSpeedPercentage || needsImmediateBroadcast) { 
+            // Update LCD
+            // Update more frequently if something changed, or every second regardless
+            if (currentTime - lastLcdUpdateTime > 1000 || needsImmediateBroadcast) { 
                 updateLCD_NormalMode();
                 lastLcdUpdateTime = currentTime;
             }
         } 
+        // If in menu mode, displayMenu() is called by handleMenuInput() when changes occur.
         
-        vTaskDelay(pdMS_TO_TICKS(50)); 
+        vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
     }
 }
