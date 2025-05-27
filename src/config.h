@@ -49,13 +49,12 @@ extern volatile unsigned long pulseCount; // For ISR
 extern unsigned long lastRpmReadTime_Task; 
 
 // --- Menu System Variables ---
-// Added MQTT_SETTINGS and sub-menus
 enum MenuScreen { 
     MAIN_MENU, 
     WIFI_SETTINGS, WIFI_SCAN, WIFI_PASSWORD_ENTRY, WIFI_STATUS, 
     MQTT_SETTINGS, MQTT_SERVER_ENTRY, MQTT_PORT_ENTRY, MQTT_USER_ENTRY, MQTT_PASS_ENTRY, MQTT_TOPIC_ENTRY,
-    // ADDED: MQTT Discovery Menu Item (Placeholder for future UI toggle)
-    // MQTT_DISCOVERY_SETTINGS, 
+    MQTT_DISCOVERY_SETTINGS,        // ADDED: Menu screen for MQTT Discovery settings
+    MQTT_DISCOVERY_PREFIX_ENTRY,  // ADDED: Menu screen for editing MQTT Discovery Prefix
     VIEW_STATUS, 
     CONFIRM_REBOOT 
 };
@@ -64,7 +63,7 @@ extern volatile int selectedMenuItem;
 extern volatile int scanResultCount;
 extern String scannedSSIDs[10]; 
 extern char passwordInputBuffer[64]; // Used for WiFi and MQTT passwords
-extern char generalInputBuffer[128]; // For MQTT server, user, topic
+extern char generalInputBuffer[128]; // For MQTT server, user, topic, MQTT pass, Discovery Prefix
 extern volatile int generalInputCharIndex;
 extern volatile char currentGeneralEditChar;
 
@@ -77,7 +76,7 @@ const int MAX_CURVE_POINTS = 8;
 extern int tempPoints[MAX_CURVE_POINTS];
 extern int pwmPercentagePoints[MAX_CURVE_POINTS];
 extern int numCurvePoints;
-extern volatile bool fanCurveChanged; // ADDED: Flag to indicate curve was changed by MQTT or Serial
+extern volatile bool fanCurveChanged; // ADDED: Initialize flag
 
 // Staging Fan Curve for Serial Commands
 extern int stagingTempPoints[MAX_CURVE_POINTS];
@@ -93,13 +92,13 @@ extern volatile bool isMqttEnabled;
 extern char mqttServer[64];
 extern int mqttPort;
 extern char mqttUser[64];
-extern char mqttPassword[64]; // Re-use passwordInputBuffer for entry if desired, then copy here
+extern char mqttPassword[64]; 
 extern char mqttBaseTopic[64];
 // --- MQTT Discovery Configuration ---
-extern volatile bool isMqttDiscoveryEnabled; // Toggle for enabling/disabling MQTT Discovery
-extern char mqttDiscoveryPrefix[32];     // Home Assistant discovery prefix (default "homeassistant")
-extern char mqttDeviceId[64];            // Unique device ID for MQTT, derived from baseTopic or MAC
-extern char mqttDeviceName[64];          // Friendly name for the device in Home Assistant
+extern volatile bool isMqttDiscoveryEnabled; 
+extern char mqttDiscoveryPrefix[32];     
+extern char mqttDeviceId[64];            
+extern char mqttDeviceName[64];          
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;

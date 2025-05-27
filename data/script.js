@@ -1,17 +1,21 @@
 let gateway = `ws://${window.location.hostname}:81/`;
 let websocket;
 const MAX_CURVE_POINTS_UI = 8;
-let initialDataLoaded = false; // Flag to track first data load
+let initialDataLoaded = false; 
 
 window.addEventListener('load', onLoad);
 
 function onLoad(event) { 
-  // Main content is hidden by CSS initially via .hidden-initially
   initWebSocket(); 
-  // Add event listener for MQTT enable checkbox
   const mqttEnableCheckbox = document.getElementById('mqttEnable');
   if (mqttEnableCheckbox) {
     mqttEnableCheckbox.addEventListener('change', toggleMqttFields);
+  }
+  // ADDED: Event listener for MQTT Discovery enable checkbox
+  const mqttDiscoveryEnableCheckbox = document.getElementById('mqttDiscoveryEnable');
+  if (mqttDiscoveryEnableCheckbox) {
+    // We might not need a specific toggle function for discovery fields if they are always shown when MQTT is enabled.
+    // For now, we'll control visibility along with general MQTT fields.
   }
 }
 
@@ -57,7 +61,6 @@ function onMessage(event) {
 
   if (data.isWiFiEnabled === false) {
       console.log("ESP32 reports WiFi is disabled. Web UI may not function fully.");
-      // Consider disabling MQTT config section if WiFi is off, as MQTT needs WiFi
       const mqttContainer = document.getElementById('mqttConfigContainer');
       if (mqttContainer) mqttContainer.classList.add('hidden');
   } else {
@@ -72,7 +75,7 @@ function onMessage(event) {
     const tempDisplay = document.getElementById('temp');
 
     if (data.tempSensorFound) {
-      tempDisplay.innerText = data.temperature !== undefined && data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
+      tempDisplay.innerText = data.temperature !== undefined && data.temperature !== null && data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
       if (curveEditor) curveEditor.classList.remove('hidden');
       if (autoModeNotice) autoModeNotice.innerText = '';
     } else {
@@ -85,7 +88,7 @@ function onMessage(event) {
       }
     }
   } else if (data.temperature !== undefined) { 
-     document.getElementById('temp').innerText = data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
+     document.getElementById('temp').innerText = data.temperature !== null && data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
   }
 
 
@@ -125,15 +128,20 @@ function onMessage(event) {
   // Populate MQTT Configuration Fields
   if (data.isMqttEnabled !== undefined) {
     document.getElementById('mqttEnable').checked = data.isMqttEnabled;
-    toggleMqttFields(); // Show/hide fields based on the checkbox state
+    toggleMqttFields(); 
   }
   if (data.mqttServer !== undefined) document.getElementById('mqttServer').value = data.mqttServer;
   if (data.mqttPort !== undefined) document.getElementById('mqttPort').value = data.mqttPort;
   if (data.mqttUser !== undefined) document.getElementById('mqttUser').value = data.mqttUser;
-  // MQTT Password is not sent back from ESP32 for security, so don't try to populate it.
-  // User will have to re-enter if they want to change it.
   if (data.mqttBaseTopic !== undefined) document.getElementById('mqttBaseTopic').value = data.mqttBaseTopic;
 
+  // ADDED: Populate MQTT Discovery Fields
+  if (data.isMqttDiscoveryEnabled !== undefined) {
+    document.getElementById('mqttDiscoveryEnable').checked = data.isMqttDiscoveryEnabled;
+  }
+  if (data.mqttDiscoveryPrefix !== undefined) {
+    document.getElementById('mqttDiscoveryPrefix').value = data.mqttDiscoveryPrefix;
+  }
 }
 
 function sendCommand(commandPayload) {
@@ -195,7 +203,6 @@ function removeCurvePointUI(idx) {
     if (!container) return;
     const points = container.querySelectorAll('.curve-point');
     if (points[idx]) points[idx].remove();
-    // If all points removed, show placeholder
     if (container.querySelectorAll('.curve-point').length === 0) {
         container.innerHTML = '<p class="placeholder">No curve points. Add points.</p>';
     }
@@ -207,26 +214,26 @@ function saveFanCurve() {
   pElements.forEach((el, index) => {
     const tempIn = el.querySelector('input[type="number"][id^="temp_p_"]');
     const pwmIn = el.querySelector('input[type="number"][id^="pwm_p_"]');
-    if (!tempIn || !pwmIn) { isValid = false; return; } // Should not happen
+    if (!tempIn || !pwmIn) { isValid = false; return; } 
     const temp = parseInt(tempIn.value);
     const pwmPercent = parseInt(pwmIn.value);
     if (isNaN(temp) || isNaN(pwmPercent) || temp < 0 || temp > 120 || pwmPercent < 0 || pwmPercent > 100 || (index > 0 && temp <= lastTemp)) {
       alert(`Invalid data at point ${index + 1}. Temps must be increasing and within valid ranges (Temp: 0-120, PWM: 0-100).`); 
       isValid = false; 
-      return; // Exit forEach iteration early if invalid
+      return; 
     }
     lastTemp = temp; 
     points.push({ temp: temp, pwmPercent: pwmPercent });
   });
 
-  if (!isValid) return; // Don't proceed if any point was invalid
+  if (!isValid) return; 
 
   if (points.length < 2) { 
     alert("Minimum 2 points required for a fan curve."); 
     return; 
   }
   if (points.length > MAX_CURVE_POINTS_UI) { 
-    alert(`Maximum ${MAX_CURVE_POINTS_UI} points allowed for a fan curve.`); // Should be caught by addCurvePointUI
+    alert(`Maximum ${MAX_CURVE_POINTS_UI} points allowed for a fan curve.`); 
     return; 
   }
   sendCommand({ action: 'setCurve', curve: points });
@@ -237,8 +244,12 @@ function saveFanCurve() {
 function toggleMqttFields() {
   const mqttEnableCheckbox = document.getElementById('mqttEnable');
   const mqttFieldsContainer = document.getElementById('mqttFieldsContainer');
-  if (mqttEnableCheckbox && mqttFieldsContainer) {
-    mqttFieldsContainer.classList.toggle('hidden', !mqttEnableCheckbox.checked);
+  const mqttDiscoveryFieldsContainer = document.getElementById('mqttDiscoveryFieldsContainer'); // ADDED
+  
+  if (mqttEnableCheckbox && mqttFieldsContainer && mqttDiscoveryFieldsContainer) {
+    const isEnabled = mqttEnableCheckbox.checked;
+    mqttFieldsContainer.classList.toggle('hidden', !isEnabled);
+    mqttDiscoveryFieldsContainer.classList.toggle('hidden', !isEnabled); // Show/hide discovery along with MQTT fields
   }
 }
 
@@ -249,11 +260,10 @@ function saveMqttConfig() {
     mqttServer: document.getElementById('mqttServer').value.trim(),
     mqttPort: parseInt(document.getElementById('mqttPort').value),
     mqttUser: document.getElementById('mqttUser').value.trim(),
-    mqttPassword: document.getElementById('mqttPassword').value, // Password sent as is, ESP32 handles it
+    mqttPassword: document.getElementById('mqttPassword').value, 
     mqttBaseTopic: document.getElementById('mqttBaseTopic').value.trim()
   };
 
-  // Basic validation
   if (mqttConfig.isMqttEnabled) {
     if (!mqttConfig.mqttServer) {
       alert("MQTT Broker Server/IP is required when MQTT is enabled.");
@@ -269,7 +279,6 @@ function saveMqttConfig() {
     }
   }
   
-  // Clear password field after reading for security, so it's not lingering if user navigates away
   document.getElementById('mqttPassword').value = ''; 
 
   sendCommand(mqttConfig);
@@ -277,5 +286,26 @@ function saveMqttConfig() {
   document.getElementById('mqttRebootNotice').classList.remove('hidden');
   setTimeout(() => {
     document.getElementById('mqttRebootNotice').classList.add('hidden');
-  }, 7000); // Hide notice after 7 seconds
+  }, 7000); 
+}
+
+// ADDED: Function to save MQTT Discovery configuration
+function saveMqttDiscoveryConfig() {
+  const discoveryConfig = {
+    action: 'setMqttDiscoveryConfig',
+    isMqttDiscoveryEnabled: document.getElementById('mqttDiscoveryEnable').checked,
+    mqttDiscoveryPrefix: document.getElementById('mqttDiscoveryPrefix').value.trim()
+  };
+
+  if (discoveryConfig.isMqttDiscoveryEnabled && !discoveryConfig.mqttDiscoveryPrefix) {
+    alert("MQTT Discovery Prefix is required when Discovery is enabled.");
+    return;
+  }
+
+  sendCommand(discoveryConfig);
+  alert("MQTT Discovery configuration sent to device. A reboot might be required for changes to take full effect.");
+  document.getElementById('mqttDiscoveryRebootNotice').classList.remove('hidden');
+  setTimeout(() => {
+    document.getElementById('mqttDiscoveryRebootNotice').classList.add('hidden');
+  }, 7000);
 }

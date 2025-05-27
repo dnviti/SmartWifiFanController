@@ -12,12 +12,16 @@ void displayMainMenu();
 void displayWiFiSettingsMenu();
 void displayWiFiScanMenu();
 void displayPasswordEntryMenu();
-void displayWiFiStatusMenu(); // Keep if used, or remove if "View Status" just exits menu
+void displayWiFiStatusMenu(); 
 void displayConfirmRebootMenu();
 
-// MQTT Menu Display Functions - ADDED DECLARATIONS
+// MQTT Menu Display Functions
 void displayMqttSettingsMenu();
-void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly = false);
+void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly = false, int maxLength = 16); // Added maxLength
+
+// MQTT Discovery Menu Display Functions - ADDED DECLARATIONS
+void displayMqttDiscoverySettingsMenu();
+// void displayMqttDiscoveryPrefixEntryMenu(); // Will reuse displayMqttEntryMenu
 
 
 #endif // DISPLAY_HANDLER_H
