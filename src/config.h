@@ -12,9 +12,24 @@
 #include <ArduinoJson.h> 
 #include <Preferences.h>
 #include <PubSubClient.h> // Added for MQTT
+#include <HTTPClient.h>   // For OTA from URL
+#include <HTTPUpdate.h>   // For OTA from URL
+#include <SPIFFS.h>       // For loading CA from SPIFFS
 
 // --- Firmware Version ---
 #define FIRMWARE_VERSION "1.1.0-discovery" // Define firmware version
+#define PIO_BUILD_ENV_NAME "esp32_fancontrol" // MUST MATCH 'PIO_ENV' in GitHub Actions release.yml
+
+// --- GitHub OTA Configuration ---
+#define GITHUB_REPO_OWNER "dnviti"
+#define GITHUB_REPO_NAME "SmartWifiFanController"
+#define GITHUB_API_LATEST_RELEASE_URL "https://api.github.com/repos/" GITHUB_REPO_OWNER "/" GITHUB_REPO_NAME "/releases/latest"
+#define GITHUB_ROOT_CA_FILENAME "/github_root_ca.pem" // Filename on SPIFFS for the Root CA
+
+// --- OTA Update Status ---
+extern volatile bool ota_in_progress;
+extern String ota_status_message; 
+extern String GITHUB_API_ROOT_CA_STRING; // Extern declaration
 
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
@@ -53,8 +68,9 @@ enum MenuScreen {
     MAIN_MENU, 
     WIFI_SETTINGS, WIFI_SCAN, WIFI_PASSWORD_ENTRY, WIFI_STATUS, 
     MQTT_SETTINGS, MQTT_SERVER_ENTRY, MQTT_PORT_ENTRY, MQTT_USER_ENTRY, MQTT_PASS_ENTRY, MQTT_TOPIC_ENTRY,
-    MQTT_DISCOVERY_SETTINGS,        // ADDED: Menu screen for MQTT Discovery settings
-    MQTT_DISCOVERY_PREFIX_ENTRY,  // ADDED: Menu screen for editing MQTT Discovery Prefix
+    MQTT_DISCOVERY_SETTINGS,        
+    MQTT_DISCOVERY_PREFIX_ENTRY,  
+    OTA_UPDATE_SCREEN, 
     VIEW_STATUS, 
     CONFIRM_REBOOT 
 };
@@ -62,21 +78,21 @@ extern volatile MenuScreen currentMenuScreen;
 extern volatile int selectedMenuItem;
 extern volatile int scanResultCount;
 extern String scannedSSIDs[10]; 
-extern char passwordInputBuffer[64]; // Used for WiFi and MQTT passwords
-extern char generalInputBuffer[128]; // For MQTT server, user, topic, MQTT pass, Discovery Prefix
+extern char passwordInputBuffer[64]; 
+extern char generalInputBuffer[128]; 
 extern volatile int generalInputCharIndex;
 extern volatile char currentGeneralEditChar;
 
 
-extern volatile int passwordCharIndex; // Specific to WiFi password entry if needed, or merge with general input
-extern volatile char currentPasswordEditChar; // Specific to WiFi password entry if needed
+extern volatile int passwordCharIndex; 
+extern volatile char currentPasswordEditChar; 
 
 // --- Fan Curve ---
 const int MAX_CURVE_POINTS = 8; 
 extern int tempPoints[MAX_CURVE_POINTS];
 extern int pwmPercentagePoints[MAX_CURVE_POINTS];
 extern int numCurvePoints;
-extern volatile bool fanCurveChanged; // ADDED: Initialize flag
+extern volatile bool fanCurveChanged; 
 
 // Staging Fan Curve for Serial Commands
 extern int stagingTempPoints[MAX_CURVE_POINTS];
@@ -84,7 +100,7 @@ extern int stagingPwmPercentagePoints[MAX_CURVE_POINTS];
 extern int stagingNumCurvePoints;
 
 // --- Task Communication ---
-extern volatile bool needsImmediateBroadcast; // Also used for MQTT updates
+extern volatile bool needsImmediateBroadcast; 
 extern volatile bool rebootNeeded; 
 
 // --- MQTT Configuration ---
@@ -94,11 +110,18 @@ extern int mqttPort;
 extern char mqttUser[64];
 extern char mqttPassword[64]; 
 extern char mqttBaseTopic[64];
+
 // --- MQTT Discovery Configuration ---
 extern volatile bool isMqttDiscoveryEnabled; 
 extern char mqttDiscoveryPrefix[32];     
 extern char mqttDeviceId[64];            
 extern char mqttDeviceName[64];          
+
+// --- OTA Update Status ---
+extern volatile bool ota_in_progress;
+extern String ota_status_message; 
+extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
+
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;
@@ -106,8 +129,8 @@ extern Adafruit_BMP280 bmp;
 extern LiquidCrystal_I2C lcd;
 extern AsyncWebServer server;
 extern WebSocketsServer webSocket;
-extern WiFiClient espClient; // For MQTT
-extern PubSubClient mqttClient; // For MQTT
+extern WiFiClient espClient; 
+extern PubSubClient mqttClient; 
 
 // --- Button Debouncing ---
 extern unsigned long buttonPressTime[5]; 

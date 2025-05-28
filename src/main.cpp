@@ -1,13 +1,13 @@
 #include "config.h"         // Must be first for global externs
-#include <SPIFFS.h>         // Ensure SPIFFS is included for main.cpp
+#include <SPIFFS.h>         
 #include "nvs_handler.h"
 #include "fan_control.h"
 #include "display_handler.h"
 #include "input_handler.h"
 #include "network_handler.h" 
 #include "tasks.h"
-#include "mqtt_handler.h"   // Added for MQTT
-
+#include "mqtt_handler.h"   
+#include "ota_updater.h"    
 
 // --- Global Variable Definitions (these are declared extern in config.h) ---
 // Pin Definitions
@@ -47,20 +47,19 @@ volatile MenuScreen currentMenuScreen = MAIN_MENU;
 volatile int selectedMenuItem = 0;
 volatile int scanResultCount = 0;
 String scannedSSIDs[10]; 
-char passwordInputBuffer[64] = ""; // For WiFi password
-char generalInputBuffer[128] = ""; // For MQTT server, user, topic, MQTT pass
+char passwordInputBuffer[64] = ""; 
+char generalInputBuffer[128] = ""; 
 volatile int generalInputCharIndex = 0;
 volatile char currentGeneralEditChar = 'a';
 
-volatile int passwordCharIndex = 0; // Specifically for WiFi password if separate logic is kept
-volatile char currentPasswordEditChar = 'a'; // Specifically for WiFi password
+volatile int passwordCharIndex = 0; 
+volatile char currentPasswordEditChar = 'a'; 
 
 // Fan Curve
-// MAX_CURVE_POINTS is defined in config.h
 int tempPoints[MAX_CURVE_POINTS];
 int pwmPercentagePoints[MAX_CURVE_POINTS];
 int numCurvePoints = 0;
-volatile bool fanCurveChanged = false; // ADDED: Initialize flag
+volatile bool fanCurveChanged = false; 
 
 // Staging Fan Curve for Serial Commands
 int stagingTempPoints[MAX_CURVE_POINTS];
@@ -72,18 +71,24 @@ volatile bool needsImmediateBroadcast = false;
 volatile bool rebootNeeded = false; 
 
 // MQTT Configuration
-volatile bool isMqttEnabled = false; // Default to disabled
-char mqttServer[64] = "your_mqtt_broker_ip"; // Default, load from NVS
-int mqttPort = 1883;                         // Default, load from NVS
-char mqttUser[64] = "";                      // Default, load from NVS
-char mqttPassword[64] = "";                  // Default, load from NVS
-char mqttBaseTopic[64] = "fancontroller";    // Default, load from NVS
+volatile bool isMqttEnabled = false; 
+char mqttServer[64] = "your_mqtt_broker_ip"; 
+int mqttPort = 1883;                         
+char mqttUser[64] = "";                      
+char mqttPassword[64] = "";                  
+char mqttBaseTopic[64] = "fancontroller";    
 
 // MQTT Discovery Configuration
-volatile bool isMqttDiscoveryEnabled = true; // Default to true. Loaded from NVS.
-char mqttDiscoveryPrefix[32] = "homeassistant"; // Default Home Assistant prefix. Loaded from NVS.
-char mqttDeviceId[64] = "esp32fanctrl";   // Will be dynamically set in setup()
-char mqttDeviceName[64] = "ESP32 Fan Controller"; // Default, can be made configurable
+volatile bool isMqttDiscoveryEnabled = true; 
+char mqttDiscoveryPrefix[32] = "homeassistant"; 
+char mqttDeviceId[64] = "esp32fanctrl";   
+char mqttDeviceName[64] = "ESP32 Fan Controller"; 
+
+
+// OTA Update Status
+volatile bool ota_in_progress = false;
+String ota_status_message = "OTA Idle"; 
+String GITHUB_API_ROOT_CA_STRING = ""; // <<< Actual definition of the global variable
 
 
 // Global Objects
@@ -92,8 +97,8 @@ Adafruit_BMP280 bmp;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 AsyncWebServer server(80);
 WebSocketsServer webSocket(81);
-WiFiClient espClient; // For MQTT
-PubSubClient mqttClient(espClient); // For MQTT
+WiFiClient espClient; 
+PubSubClient mqttClient(espClient); 
 
 
 // Button Debouncing
@@ -110,6 +115,27 @@ TaskHandle_t networkTaskHandle = NULL;
 TaskHandle_t mainAppTaskHandle = NULL;
 
 
+// Function to load Root CA from SPIFFS
+void loadRootCA() {
+    if (SPIFFS.exists(GITHUB_ROOT_CA_FILENAME)) {
+        File caFile = SPIFFS.open(GITHUB_ROOT_CA_FILENAME, "r");
+        if (caFile) {
+            GITHUB_API_ROOT_CA_STRING = caFile.readString(); // Assign to the global String
+            caFile.close();
+            if (GITHUB_API_ROOT_CA_STRING.length() > 0) {
+                if (serialDebugEnabled) Serial.printf("[INIT] Successfully loaded Root CA from %s (%d bytes)\n", GITHUB_ROOT_CA_FILENAME, GITHUB_API_ROOT_CA_STRING.length());
+            } else {
+                if (serialDebugEnabled) Serial.printf("[INIT_ERR] Root CA file %s is empty.\n", GITHUB_ROOT_CA_FILENAME);
+            }
+        } else {
+            if (serialDebugEnabled) Serial.printf("[INIT_ERR] Failed to open Root CA file %s for reading.\n", GITHUB_ROOT_CA_FILENAME);
+        }
+    } else {
+        if (serialDebugEnabled) Serial.printf("[INIT_WARN] Root CA file %s not found on SPIFFS. Secure OTA might fail if server cert is not otherwise trusted.\n", GITHUB_ROOT_CA_FILENAME);
+    }
+}
+
+
 // --- Arduino Setup Function (runs on Core 1) ---
 void setup() {
     pinMode(DEBUG_ENABLE_PIN, INPUT_PULLDOWN); 
@@ -121,6 +147,7 @@ void setup() {
         delay(100); 
         Serial.println("\n[SYSTEM] Serial Debug ENABLED. Fan Controller Initializing...");
         Serial.printf("[SYSTEM] Firmware Version: %s\n", FIRMWARE_VERSION);
+        Serial.printf("[SYSTEM] PIO Build Env: %s\n", PIO_BUILD_ENV_NAME);
         Serial.println("Type 'help' for a list of serial commands.");
     } 
     
@@ -135,18 +162,16 @@ void setup() {
         if(serialDebugEnabled) Serial.println("[INIT_ERR] SPIFFS Mount Failed! Web server may not work.");
     } else {
         if(serialDebugEnabled) Serial.println("[INIT] SPIFFS Mounted Successfully.");
+        loadRootCA(); // Load CA after SPIFFS is initialized
     }
 
     loadWiFiConfig(); 
     loadMqttConfig(); 
-    loadMqttDiscoveryConfig(); // ADDED: Load MQTT Discovery settings from NVS
+    loadMqttDiscoveryConfig(); 
 
-    // Dynamically set mqttDeviceId based on MAC address to ensure uniqueness
     uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA); // Get MAC address
+    esp_read_mac(mac, ESP_MAC_WIFI_STA); 
     snprintf(mqttDeviceId, sizeof(mqttDeviceId), "esp32fanctrl_%02X%02X%02X", mac[3], mac[4], mac[5]);
-    // Optionally, if a custom device name is set via NVS, it could override the default here.
-    // For now, mqttDeviceName remains the default "ESP32 Fan Controller".
     if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device ID set to: %s\n", mqttDeviceId);
     if(serialDebugEnabled) Serial.printf("[INIT] MQTT Device Name: %s\n", mqttDeviceName);
     if(serialDebugEnabled) Serial.printf("[INIT] MQTT Discovery Prefix (after NVS load): %s, Enabled: %s\n", mqttDiscoveryPrefix, isMqttDiscoveryEnabled ? "Yes" : "No");
@@ -182,8 +207,8 @@ void setup() {
     lcd.backlight();
     lcd.print("Fan Controller");
     lcd.setCursor(0,1);
-    lcd.print("Booting..."); 
-    delay(1000);
+    lcd.print(FIRMWARE_VERSION); 
+    delay(1500);
     if(serialDebugEnabled) Serial.println("[INIT] LCD Initialized.");
 
     if(serialDebugEnabled) Serial.println("[INIT] Setting up LEDC PWM for fan...");
@@ -220,5 +245,5 @@ void setup() {
 }
 
 void loop() {
-  vTaskDelay(pdMS_TO_TICKS(1000)); // Main loop does very little, tasks handle work
+  vTaskDelay(pdMS_TO_TICKS(1000)); 
 }

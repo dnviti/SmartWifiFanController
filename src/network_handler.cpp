@@ -1,15 +1,15 @@
 #include "network_handler.h"
-#include "config.h"      // For global variables, server, webSocket objects
-#include "nvs_handler.h" // For saveFanCurveToNVS, saveMqttConfig, saveMqttDiscoveryConfig
+#include "config.h"      
+#include "nvs_handler.h" 
 #include <SPIFFS.h>
-#include <ArduinoJson.h> // Ensure it's included for both send and receive
+#include <ArduinoJson.h> 
+#include "ota_updater.h" // For triggerOTAUpdateCheck
 
 void broadcastWebSocketData() {
     if (!isWiFiEnabled || WiFi.status() != WL_CONNECTED) return;
     
     ArduinoJson::JsonDocument jsonDoc; 
 
-    // Corrected: Use if/else for assigning temperature or null
     if (tempSensorFound) {
         jsonDoc["temperature"] = currentTemperature;
     } else {
@@ -22,8 +22,13 @@ void broadcastWebSocketData() {
     jsonDoc["fanRpm"] = fanRpm;
     jsonDoc["isWiFiEnabled"] = isWiFiEnabled; 
     jsonDoc["serialDebugEnabled"] = serialDebugEnabled; 
+    jsonDoc["firmwareVersion"] = FIRMWARE_VERSION; // Send current firmware version
 
-    // Add Fan Curve data
+    // OTA Status
+    jsonDoc["otaInProgress"] = ota_in_progress;
+    jsonDoc["otaStatusMessage"] = ota_status_message;
+
+
     ArduinoJson::JsonArray curveArray = jsonDoc["fanCurve"].to<ArduinoJson::JsonArray>();
     for (int i = 0; i < numCurvePoints; i++) {
         ArduinoJson::JsonObject point = curveArray.add<ArduinoJson::JsonObject>();
@@ -31,15 +36,11 @@ void broadcastWebSocketData() {
         point["pwmPercent"] = pwmPercentagePoints[i];
     }
 
-    // Add MQTT Configuration Data (excluding password)
     jsonDoc["isMqttEnabled"] = isMqttEnabled;
     jsonDoc["mqttServer"] = mqttServer;
     jsonDoc["mqttPort"] = mqttPort;
     jsonDoc["mqttUser"] = mqttUser;
-    // DO NOT send mqttPassword back to the client
     jsonDoc["mqttBaseTopic"] = mqttBaseTopic;
-
-    // ADDED: MQTT Discovery Configuration Data
     jsonDoc["isMqttDiscoveryEnabled"] = isMqttDiscoveryEnabled;
     jsonDoc["mqttDiscoveryPrefix"] = mqttDiscoveryPrefix;
 
@@ -48,7 +49,12 @@ void broadcastWebSocketData() {
     serializeJson(jsonDoc, jsonString);
     webSocket.broadcastTXT(jsonString);
     if (serialDebugEnabled && millis() % 60000 < 100) { 
-        Serial.print("[WS_BCAST] "); Serial.println(jsonString);
+        // Avoid printing very long JSON strings too often if they become large
+        if (jsonString.length() < 256) {
+             Serial.print("[WS_BCAST] "); Serial.println(jsonString);
+        } else {
+             Serial.print("[WS_BCAST] Sent (length: "); Serial.print(jsonString.length()); Serial.println(")");
+        }
     }
 }
 
@@ -109,34 +115,35 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                         int tempPwmPercentagePointsValidation[MAX_CURVE_POINTS]; 
                         int newNumPoints = newCurve.size();
 
-                        for(int i=0; i < newNumPoints; ++i) {
-                            ArduinoJson::JsonObject point = newCurve[i];
+                        for(int k=0; k < newNumPoints; ++k) { // Changed i to k
+                            ArduinoJson::JsonObject point = newCurve[k];
                             if (!point["temp"].is<int>() || !point["pwmPercent"].is<int>()) {
                                 curveValid = false;
-                                if(serialDebugEnabled) Serial.printf("[WS_ERR] Curve point %d missing temp or pwmPercent, or wrong type.\n", i);
+                                if(serialDebugEnabled) Serial.printf("[WS_ERR] Curve point %d missing temp or pwmPercent, or wrong type.\n", k);
                                 break;
                             }
                             int t = point["temp"];
                             int p = point["pwmPercent"];
 
-                            if (t < 0 || t > 120 || p < 0 || p > 100 || (i > 0 && t <= lastTemp) ) {
+                            if (t < 0 || t > 120 || p < 0 || p > 100 || (k > 0 && t <= lastTemp) ) {
                                 curveValid = false;
-                                if(serialDebugEnabled) Serial.printf("[WS_ERR] Invalid curve point %d received: Temp=%d, PWM=%d. LastTemp=%d\n", i, t, p, lastTemp);
+                                if(serialDebugEnabled) Serial.printf("[WS_ERR] Invalid curve point %d received: Temp=%d, PWM=%d. LastTemp=%d\n", k, t, p, lastTemp);
                                 break;
                             }
-                            tempTempPointsValidation[i] = t;
-                            tempPwmPercentagePointsValidation[i] = p; 
+                            tempTempPointsValidation[k] = t;
+                            tempPwmPercentagePointsValidation[k] = p; 
                             lastTemp = t;
                         }
 
                         if (curveValid) {
                             numCurvePoints = newNumPoints;
-                            for(int i=0; i < numCurvePoints; ++i) {
-                                tempPoints[i] = tempTempPointsValidation[i];
-                                pwmPercentagePoints[i] = tempPwmPercentagePointsValidation[i]; 
+                            for(int k=0; k < numCurvePoints; ++k) { // Changed i to k
+                                tempPoints[k] = tempTempPointsValidation[k];
+                                pwmPercentagePoints[k] = tempPwmPercentagePointsValidation[k]; 
                             }
                             if(serialDebugEnabled) Serial.println("[SYSTEM] Fan curve updated and validated via WebSocket.");
                             saveFanCurveToNVS(); 
+                            fanCurveChanged = true; // Signal MQTT to publish new curve
                             needsImmediateBroadcast = true; 
                         } else {
                             if(serialDebugEnabled) Serial.println("[SYSTEM_ERR] New fan curve from web rejected due to invalid data.");
@@ -200,7 +207,6 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                     if (serialDebugEnabled) Serial.println("[WS] Received MQTT Discovery configuration update.");
                     bool changed = false;
 
-                    // Corrected: Use doc[key].is<T>() for checking existence and type
                     if (doc["isMqttDiscoveryEnabled"].is<bool>()) {
                         bool newDiscoveryEnabled = doc["isMqttDiscoveryEnabled"];
                         if (isMqttDiscoveryEnabled != newDiscoveryEnabled) {
@@ -209,8 +215,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                         }
                     }
 
-                    // Corrected: Use doc[key].is<T>() for checking existence and type
-                    if (doc["mqttDiscoveryPrefix"].is<const char*>()) { // Or .is<String>() if that's how it's sent
+                    if (doc["mqttDiscoveryPrefix"].is<const char*>()) { 
                         String newPrefix = doc["mqttDiscoveryPrefix"];
                         if (newPrefix.length() < sizeof(mqttDiscoveryPrefix)) {
                             if (strcmp(mqttDiscoveryPrefix, newPrefix.c_str()) != 0) {
@@ -229,6 +234,23 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                         needsImmediateBroadcast = true;
                     } else {
                          if (serialDebugEnabled) Serial.println("[WS] MQTT Discovery configuration received, but no changes detected.");
+                    }
+                }
+                else if (strcmp(action, "triggerOtaUpdate") == 0) { 
+                    if (serialDebugEnabled) Serial.println("[WS] Received OTA Update trigger.");
+                    if (ota_in_progress) {
+                        ota_status_message = "OTA already in progress.";
+                        needsImmediateBroadcast = true;
+                         if(serialDebugEnabled) Serial.println("[WS_OTA] " + ota_status_message);
+                    } else if (!isWiFiEnabled || WiFi.status() != WL_CONNECTED) {
+                        ota_status_message = "Error: WiFi not connected for OTA.";
+                        needsImmediateBroadcast = true;
+                        if(serialDebugEnabled) Serial.println("[WS_OTA] " + ota_status_message);
+                    } else {
+                        // This function call is blocking. It will run in the networkTask context.
+                        // UI updates for ota_status_message will happen via broadcastWebSocketData
+                        // which is called by needsImmediateBroadcast = true; within ota_updater functions.
+                        triggerOTAUpdateCheck();
                     }
                 }
                 else {

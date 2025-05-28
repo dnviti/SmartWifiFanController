@@ -7,7 +7,6 @@ void updateLCD_NormalMode() {
     String line0 = "";
     line0 += (isAutoMode ? "AUTO" : "MANUAL");
     
-    // WiFi Status
     if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
         String ipStr = WiFi.localIP().toString();
         if (line0.length() + ipStr.length() + 1 <= 16) { 
@@ -26,11 +25,10 @@ void updateLCD_NormalMode() {
         else { if (line0.length() > 6) line0 = line0.substring(0,5) + "."; line0 += " WiFi OFF";}
     }
 
-    // MQTT Status Suffix (if space)
     if (isMqttEnabled && WiFi.status() == WL_CONNECTED) {
         if (line0.length() + 2 <= 16) { 
             line0 += (mqttClient.connected() ? " M" : " m"); 
-            if (isMqttDiscoveryEnabled && line0.length() + 1 <= 16){ // Add D for discovery
+            if (isMqttDiscoveryEnabled && line0.length() + 1 <= 16){ 
                  line0 += "D";
             }
         }
@@ -80,8 +78,9 @@ void displayMenu() {
         case MQTT_USER_ENTRY:       displayMqttEntryMenu("MQTT User:", mqttUser, false, false, sizeof(mqttUser)-1); break;
         case MQTT_PASS_ENTRY:       displayMqttEntryMenu("MQTT Pass:", mqttPassword, true, false, sizeof(mqttPassword)-1); break;
         case MQTT_TOPIC_ENTRY:      displayMqttEntryMenu("MQTT Topic:", mqttBaseTopic, false, false, sizeof(mqttBaseTopic)-1); break;
-        case MQTT_DISCOVERY_SETTINGS: displayMqttDiscoverySettingsMenu(); break; // ADDED
-        case MQTT_DISCOVERY_PREFIX_ENTRY: displayMqttEntryMenu("Discovery Pfx:", mqttDiscoveryPrefix, false, false, sizeof(mqttDiscoveryPrefix)-1); break; // ADDED
+        case MQTT_DISCOVERY_SETTINGS: displayMqttDiscoverySettingsMenu(); break; 
+        case MQTT_DISCOVERY_PREFIX_ENTRY: displayMqttEntryMenu("Discovery Pfx:", mqttDiscoveryPrefix, false, false, sizeof(mqttDiscoveryPrefix)-1); break; 
+        case OTA_UPDATE_SCREEN:     displayOtaUpdateMenu(); break; // NEW
         case CONFIRM_REBOOT:        displayConfirmRebootMenu(); break;
         default: 
             lcd.print("Unknown Menu"); 
@@ -90,15 +89,16 @@ void displayMenu() {
 }
 
 void displayMainMenu() {
-    if (selectedMenuItem == 0) { 
-        lcd.setCursor(0,0); lcd.print(">WiFi Settings");
-        lcd.setCursor(0,1); lcd.print(" MQTT Settings"); 
-    } else if (selectedMenuItem == 1) { 
-        lcd.setCursor(0,0); lcd.print(" WiFi Settings"); 
-        lcd.setCursor(0,1); lcd.print(">MQTT Settings");
-    } else if (selectedMenuItem == 2) { 
-        lcd.setCursor(0,0); lcd.print(" MQTT Settings"); 
-        lcd.setCursor(0,1); lcd.print(">View Status");
+    // Adjusted for 3 items: WiFi, MQTT, OTA Update, View Status (Exit)
+    const char* items[] = {"WiFi Settings", "MQTT Settings", "OTA Update", "View Status"};
+    const int numItems = 4;
+
+    if (selectedMenuItem < 2) { // Display first two items
+        lcd.setCursor(0,0); lcd.print((selectedMenuItem == 0 ? ">" : " ") + String(items[0]));
+        lcd.setCursor(0,1); lcd.print((selectedMenuItem == 1 ? ">" : " ") + String(items[1]));
+    } else { // Display items 2 and 3 (OTA and View Status)
+        lcd.setCursor(0,0); lcd.print((selectedMenuItem == 2 ? ">" : " ") + String(items[2]));
+        lcd.setCursor(0,1); lcd.print((selectedMenuItem == 3 ? ">" : " ") + String(items[3]));
     }
 }
 
@@ -174,7 +174,7 @@ void displayWiFiScanMenu() {
 void displayPasswordEntryMenu() { 
     lcd.setCursor(0,0); lcd.print("WiFi Password:");
     String passMask = "";
-    for(int k=0; k < passwordCharIndex; ++k) passMask += "*"; // Changed i to k
+    for(int k=0; k < passwordCharIndex; ++k) passMask += "*"; 
     passMask += currentPasswordEditChar; 
     
     if (passwordCharIndex >= sizeof(passwordInputBuffer) - 2) { 
@@ -204,9 +204,8 @@ void displayConfirmRebootMenu() {
 }
 
 void displayMqttSettingsMenu() {
-    // Items: "MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Discovery Cfg", "Back"
     const char* items[] = {"MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Discovery Cfg", "Back to Main"};
-    const int numItems = 8; // Updated number of items
+    const int numItems = 8; 
 
     for (int i = 0; i < 2; ++i) { 
         int itemIndexToDisplay;
@@ -245,36 +244,30 @@ void displayMqttSettingsMenu() {
             line += items[itemIndexToDisplay]; line += " "; line += String(mqttBaseTopic).substring(0, 16 - line.length());
         }
          else { 
-            line += items[itemIndexToDisplay]; // For "Discovery Cfg" and "Back to Main"
+            line += items[itemIndexToDisplay]; 
         }
         lcd.print(line.substring(0,16));
     }
 }
 
-// Reused for MQTT Server, Port, User, Pass, Topic, and Discovery Prefix
 void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly, int maxLength) {
     lcd.setCursor(0,0); lcd.print(String(prompt).substring(0,16));
     
     String valueToShow = "";
     if (isPassword) {
-        for(int k=0; k < generalInputCharIndex; ++k) valueToShow += "*"; // Changed i to k
+        for(int k=0; k < generalInputCharIndex; ++k) valueToShow += "*"; 
     } else {
-        // Display the content of generalInputBuffer up to generalInputCharIndex
-        // This buffer is actively being edited.
         for(int k=0; k<generalInputCharIndex; ++k) valueToShow += generalInputBuffer[k];
     }
     valueToShow += currentGeneralEditChar; 
     
-    // Use the passed maxLength for the check, not sizeof(generalInputBuffer) directly
-    // as generalInputBuffer might be larger than the specific field's max length (e.g. mqttDiscoveryPrefix)
-    if (generalInputCharIndex >= maxLength -1 ) { // -1 because currentGeneralEditChar is next, and we need space for null term
+    if (generalInputCharIndex >= maxLength -1 ) { 
         valueToShow += " [OK?]";
     }
 
     lcd.setCursor(0,1); lcd.print(valueToShow.substring(0,16));
 }
 
-// ADDED: MQTT Discovery Settings Menu
 void displayMqttDiscoverySettingsMenu() {
     const char* items[] = {"Discovery:", "Prefix:", "Back"};
     const int numItems = 3;
@@ -301,13 +294,33 @@ void displayMqttDiscoverySettingsMenu() {
         String line = "";
         if (itemIndexToDisplay == selectedMenuItem) line += ">"; else line += " ";
 
-        if (itemIndexToDisplay == 0) { // Discovery Enable/Disable
+        if (itemIndexToDisplay == 0) { 
             line += items[itemIndexToDisplay]; line += " "; line += (isMqttDiscoveryEnabled ? "Enabled" : "Disabled");
-        } else if (itemIndexToDisplay == 1) { // Discovery Prefix
+        } else if (itemIndexToDisplay == 1) { 
             line += items[itemIndexToDisplay]; line += " "; line += String(mqttDiscoveryPrefix).substring(0, 16 - line.length());
-        } else { // Back
+        } else { 
             line += items[itemIndexToDisplay];
         }
         lcd.print(line.substring(0,16));
+    }
+}
+
+// New function to display OTA Update screen
+void displayOtaUpdateMenu() {
+    lcd.setCursor(0, 0);
+    if (ota_in_progress) {
+        lcd.print("OTA In Progress:");
+        lcd.setCursor(0, 1);
+        lcd.print(ota_status_message.substring(0, 16));
+    } else {
+        lcd.print("Firmware Update");
+        lcd.setCursor(0, 1);
+        if (selectedMenuItem == 0) {
+            lcd.print(">Check & Update");
+        } else if (selectedMenuItem == 1) {
+            lcd.print(">Back to Main");
+        } else { // Default or when status is shown
+             lcd.print(ota_status_message.substring(0,16));
+        }
     }
 }
