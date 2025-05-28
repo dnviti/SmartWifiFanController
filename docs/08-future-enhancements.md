@@ -38,4 +38,4 @@ This ESP32 PC Fan Controller project provides a solid foundation with comprehens
 
 These enhancements range from relatively simple software additions to more complex hardware and software redesigns, offering a roadmap for continued development and improvement of the ESP32 PC Fan Controller.
 
-[Previous Chapter: Troubleshooting](http://docs.google.com/07-troubleshooting.md)
+[Previous Chapter: Troubleshooting](07-troubleshooting.md)
