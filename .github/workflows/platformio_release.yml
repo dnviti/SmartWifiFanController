@@ -1,84 +1,99 @@
-name: Create GitHub Release
+name: Create Release and Build Artifacts
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger on tags like v1.0, v1.2.3, v2.0.0-beta.1
+    branches:
+      - "release/v*" # Trigger on branches like release/v1.0.0, release/v1.2.3-alpha
+
+permissions:
+  contents: write # Needed to create releases and upload assets
 
 jobs:
-  build_and_release:
+  build-and-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Needed to create releases and upload assets
+    env:
+      PIO_ENV: esp32_fancontrol # Your PlatformIO environment name from platformio.ini
 
     steps:
-      - name: Checkout code at the specific tag
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }} # Checks out the code at the specific tag that triggered the workflow
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: "3.9" # PlatformIO recommends Python 3.9+
 
       - name: Install PlatformIO Core
         run: pip install -U platformio
 
-      - name: Cache PlatformIO data
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.platformio/packages
-            ~/.platformio/platforms
-            ~/.platformio/.cache
-            .pio/libdeps
-          key: ${{ runner.os }}-pio-release-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-release-
-
       - name: Install project dependencies
-        run: pio pkg install
+        run: pio pkg install --global # Installs libraries globally in the runner
 
-      - name: Build firmware
-        id: build_firmware # Give an ID to this step to access its outputs if needed
-        run: pio run -e upesy_wroom # Replace 'upesy_wroom' with your PIO environment
+      - name: Build Firmware
+        run: pio run -e ${{ env.PIO_ENV }}
 
-      - name: Get Release Version from Tag
+      - name: Build Filesystem Image
+        run: pio run -e ${{ env.PIO_ENV }} --target buildfs
+
+      - name: Get Version from Branch
         id: get_version
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-        # This extracts 'v1.0.0' from 'refs/tags/v1.0.0'
-
-      - name: Determine if Pre-release
-        id: is_prerelease
         run: |
-          if [[ "${{ env.RELEASE_VERSION }}" == *-* ]]; then
-            echo "PRERELEASE=true" >> $GITHUB_ENV
-          else
-            echo "PRERELEASE=false" >> $GITHUB_ENV
-          fi
-        # Checks if the version string contains a hyphen (e.g., v1.0.0-beta)
+          BRANCH_NAME="${GITHUB_REF#refs/heads/release/}"
+          echo "VERSION_TAG=${BRANCH_NAME}" >> $GITHUB_ENV
+        shell: bash
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: softprops/action-gh-release@v2 # A popular action for creating releases
+      - name: Determine Asset Names
+        id: asset_names
+        run: |
+          FIRMWARE_NAME="firmware_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
+          SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
+          echo "FIRMWARE_ASSET_NAME=${FIRMWARE_NAME}" >> $GITHUB_ENV
+          echo "SPIFFS_ASSET_NAME=${SPIFFS_NAME}" >> $GITHUB_ENV
+          # Copy built files to these new names for clarity in release assets
+          cp .pio/build/${{ env.PIO_ENV }}/firmware.bin ${{ env.FIRMWARE_ASSET_NAME }}
+          cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin ${{ env.SPIFFS_ASSET_NAME }}
+        shell: bash
+
+      - name: Create Release from Branch
+        id: create_tagged_release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }} # Use the tag that triggered the workflow
-          name: Release ${{ github.ref_name }}
-          body: | # You can customize the release body.
-            Release of version ${{ github.ref_name }}.
-            See README.md attached for details.
-            (You could auto-generate a changelog here in a more advanced setup)
+          tag_name: ${{ env.VERSION_TAG }} # This will be the tag created for the release
+          name: Release ${{ env.VERSION_TAG }}
+          body: |
+            Automated release for version ${{ env.VERSION_TAG }} (from branch ${{ github.ref_name }}).
+            Contains firmware and SPIFFS filesystem image.
           draft: false
-          prerelease: ${{ env.PRERELEASE }}
-          files: | # List of files to upload as assets
-            README.md
-            .pio/build/upesy_wroom/firmware.bin # Adjust path if your environment or output name is different
-            # You can add more files here, e.g., SPIFFS image:
-            # .pio/build/upesy_wroom/spiffs.bin
+          prerelease: ${{ contains(env.VERSION_TAG, '-') }} # Mark as prerelease if version contains '-' (e.g., v1.0.0-beta)
+          files: |
+            ${{ env.FIRMWARE_ASSET_NAME }}
+            ${{ env.SPIFFS_ASSET_NAME }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is automatically provided by GitHub Actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Output Release URL
-        run: echo "Release URL: ${{ steps.create_release.outputs.html_url }}"
+      - name: Delete 'latest' Release and Tag if they exist
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        with:
+          tag_name: latest # The tag name to delete
+          delete_release: true # Also delete the release associated with the tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true # Continue if the 'latest' tag/release doesn't exist
 
+      - name: Create 'latest' Release
+        id: create_latest_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest # This will also create/update a 'latest' tag
+          name: Latest Build
+          body: |
+            This is the latest automated build.
+            Based on version: ${{ env.VERSION_TAG }} (from branch ${{ github.ref_name }})
+            Contains firmware and SPIFFS filesystem image.
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.FIRMWARE_ASSET_NAME }}
+            ${{ env.SPIFFS_ASSET_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
