@@ -5,6 +5,8 @@
 #include "fan_control.h"     
 #include "display_handler.h" 
 #include "mqtt_handler.h"    // Added for MQTT
+#include <ElegantOTA.h>      // Added for OTA Updates
+#include <WiFi.h>            // Ensure WiFi is included for MAC address and hostname
 
 // --- Network Task (Core 0) ---
 void networkTask(void *pvParameters) {
@@ -15,6 +17,17 @@ void networkTask(void *pvParameters) {
 
     // --- WiFi Connection Handling ---
     if (isWiFiEnabled) {
+        // Generate and set hostname before WiFi.begin()
+        uint8_t mac[6];
+        char hostname[32]; // "fancontrol-" is 11 chars, MAC is 12 chars, plus null terminator
+        WiFi.macAddress(mac);
+        sprintf(hostname, "fancontrol-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        
+        if(serialDebugEnabled) Serial.printf("[WiFi] Setting hostname to: %s\n", hostname);
+        if (!WiFi.setHostname(hostname)) {
+            if(serialDebugEnabled) Serial.println("[WiFi_ERR] Failed to set hostname.");
+        }
+
         if(serialDebugEnabled) { Serial.print("[WiFi] NetworkTask: Attempting connection to SSID: '"); Serial.print(current_ssid); Serial.println("'");}
         
         if (strlen(current_ssid) > 0 && strcmp(current_ssid, "YOUR_WIFI_SSID") != 0 && strcmp(current_ssid, "") != 0 ) {
@@ -35,19 +48,29 @@ void networkTask(void *pvParameters) {
     }
 
 
-    // --- Service Initialization (Websocket, MQTT) if WiFi is connected ---
+    // --- Service Initialization (Websocket, MQTT, OTA) if WiFi is connected ---
     if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
         if(serialDebugEnabled) { 
             Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
             Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());
+            Serial.print("[WiFi] NetworkTask: Hostname: "); Serial.println(WiFi.getHostname()); // Log the effective hostname
         }
         
         // Setup WebSockets
         setupWebServerRoutes(); 
         webSocket.begin();
         webSocket.onEvent(webSocketEvent);
-        server.begin(); // Start AsyncWebServer
+        
+        // Start AsyncWebServer
+        server.begin(); 
         if(serialDebugEnabled) Serial.println("[SYSTEM] HTTP server and WebSocket started on Core 0.");
+
+        // Initialize ElegantOTA
+        ElegantOTA.begin(&server);
+        // You can also set a custom ID for ElegantOTA if desired, which could include the hostname
+        // ElegantOTA.setID(hostname); // Optional: If you want ElegantOTA to display this ID
+        if(serialDebugEnabled) Serial.println("[SYSTEM] ElegantOTA started. Update endpoint: /update");
+
 
         // Setup MQTT if enabled
         if (isMqttEnabled) {
@@ -57,13 +80,14 @@ void networkTask(void *pvParameters) {
         }
 
     } else { 
-        if(isWiFiEnabled && serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: WiFi Connection Failed or not attempted. Web/MQTT services may not be available.");
+        if(isWiFiEnabled && serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: WiFi Connection Failed or not attempted. Web/MQTT/OTA services may not be available.");
     }
     
     // --- Main Loop for Network Task ---
     for(;;) {
         if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) { 
             webSocket.loop();
+            ElegantOTA.loop(); // Handles OTA requests, important for some versions/modes
             unsigned long currentTime = millis();
 
             // Combined broadcast/publish logic for immediate updates
@@ -106,8 +130,9 @@ void networkTask(void *pvParameters) {
         } else if (isWiFiEnabled && WiFi.status() != WL_CONNECTED) {
             // Optional: Attempt to reconnect WiFi if it drops
             // For now, MQTT will also disconnect if WiFi drops (handled in loopMQTT).
+            // ElegantOTA also requires WiFi.
             if (serialDebugEnabled && millis() % 15000 < 50) { // Log occasionally
-                 Serial.println("[WiFi] NetworkTask: WiFi disconnected. Waiting for reconnection or config change.");
+                 Serial.println("[WiFi] NetworkTask: WiFi disconnected. Waiting for reconnection or config change. OTA/Web/MQTT unavailable.");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
