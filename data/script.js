@@ -11,12 +11,7 @@ function onLoad(event) {
   if (mqttEnableCheckbox) {
     mqttEnableCheckbox.addEventListener('change', toggleMqttFields);
   }
-  // ADDED: Event listener for MQTT Discovery enable checkbox
-  const mqttDiscoveryEnableCheckbox = document.getElementById('mqttDiscoveryEnable');
-  if (mqttDiscoveryEnableCheckbox) {
-    // We might not need a specific toggle function for discovery fields if they are always shown when MQTT is enabled.
-    // For now, we'll control visibility along with general MQTT fields.
-  }
+  // No specific listener for discovery needed here if controlled with mqttFields
 }
 
 function initWebSocket() {
@@ -63,9 +58,14 @@ function onMessage(event) {
       console.log("ESP32 reports WiFi is disabled. Web UI may not function fully.");
       const mqttContainer = document.getElementById('mqttConfigContainer');
       if (mqttContainer) mqttContainer.classList.add('hidden');
+      // Also hide OTA update section if WiFi is off
+      const otaContainer = document.querySelector('.ota-update-container');
+      if (otaContainer) otaContainer.classList.add('hidden');
   } else {
       const mqttContainer = document.getElementById('mqttConfigContainer');
       if (mqttContainer) mqttContainer.classList.remove('hidden');
+      const otaContainer = document.querySelector('.ota-update-container');
+      if (otaContainer) otaContainer.classList.remove('hidden');
   }
 
 
@@ -91,6 +91,10 @@ function onMessage(event) {
      document.getElementById('temp').innerText = data.temperature !== null && data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
   }
 
+  if (data.firmwareVersion !== undefined) { 
+    const fwVersionEl = document.getElementById('firmwareVersion');
+    if (fwVersionEl) fwVersionEl.innerText = data.firmwareVersion;
+  }
 
   if(data.fanSpeed !== undefined) document.getElementById('fanSpeed').innerText = data.fanSpeed;
   if(data.fanRpm !== undefined) document.getElementById('rpm').innerText = data.fanRpm;
@@ -125,7 +129,6 @@ function onMessage(event) {
     }
   }
 
-  // Populate MQTT Configuration Fields
   if (data.isMqttEnabled !== undefined) {
     document.getElementById('mqttEnable').checked = data.isMqttEnabled;
     toggleMqttFields(); 
@@ -135,12 +138,26 @@ function onMessage(event) {
   if (data.mqttUser !== undefined) document.getElementById('mqttUser').value = data.mqttUser;
   if (data.mqttBaseTopic !== undefined) document.getElementById('mqttBaseTopic').value = data.mqttBaseTopic;
 
-  // ADDED: Populate MQTT Discovery Fields
   if (data.isMqttDiscoveryEnabled !== undefined) {
     document.getElementById('mqttDiscoveryEnable').checked = data.isMqttDiscoveryEnabled;
   }
   if (data.mqttDiscoveryPrefix !== undefined) {
     document.getElementById('mqttDiscoveryPrefix').value = data.mqttDiscoveryPrefix;
+  }
+
+  // Handle OTA Status Updates
+  if (data.otaStatusMessage !== undefined) {
+    const otaStatusEl = document.getElementById('otaStatusMessage');
+    if (otaStatusEl) otaStatusEl.innerText = data.otaStatusMessage;
+  }
+  if (data.otaInProgress !== undefined) {
+    const otaButton = document.getElementById('otaUpdateButton');
+    if (otaButton) otaButton.disabled = data.otaInProgress;
+    if (data.otaInProgress) {
+        if (otaButton) otaButton.innerText = "Update in Progress...";
+    } else {
+        if (otaButton) otaButton.innerText = "Check for Updates & Install";
+    }
   }
 }
 
@@ -240,16 +257,15 @@ function saveFanCurve() {
   alert("Fan curve sent to device. It will be validated and saved by the ESP32.");
 }
 
-// --- MQTT Configuration UI Functions ---
 function toggleMqttFields() {
   const mqttEnableCheckbox = document.getElementById('mqttEnable');
   const mqttFieldsContainer = document.getElementById('mqttFieldsContainer');
-  const mqttDiscoveryFieldsContainer = document.getElementById('mqttDiscoveryFieldsContainer'); // ADDED
+  const mqttDiscoveryFieldsContainer = document.getElementById('mqttDiscoveryFieldsContainer'); 
   
   if (mqttEnableCheckbox && mqttFieldsContainer && mqttDiscoveryFieldsContainer) {
     const isEnabled = mqttEnableCheckbox.checked;
     mqttFieldsContainer.classList.toggle('hidden', !isEnabled);
-    mqttDiscoveryFieldsContainer.classList.toggle('hidden', !isEnabled); // Show/hide discovery along with MQTT fields
+    mqttDiscoveryFieldsContainer.classList.toggle('hidden', !isEnabled); 
   }
 }
 
@@ -265,18 +281,9 @@ function saveMqttConfig() {
   };
 
   if (mqttConfig.isMqttEnabled) {
-    if (!mqttConfig.mqttServer) {
-      alert("MQTT Broker Server/IP is required when MQTT is enabled.");
-      return;
-    }
-    if (isNaN(mqttConfig.mqttPort) || mqttConfig.mqttPort < 1 || mqttConfig.mqttPort > 65535) {
-      alert("Invalid MQTT Broker Port. Must be between 1 and 65535.");
-      return;
-    }
-     if (!mqttConfig.mqttBaseTopic) {
-      alert("MQTT Base Topic is required when MQTT is enabled.");
-      return;
-    }
+    if (!mqttConfig.mqttServer) { alert("MQTT Broker Server/IP is required when MQTT is enabled."); return; }
+    if (isNaN(mqttConfig.mqttPort) || mqttConfig.mqttPort < 1 || mqttConfig.mqttPort > 65535) { alert("Invalid MQTT Broker Port. Must be between 1 and 65535."); return; }
+    if (!mqttConfig.mqttBaseTopic) { alert("MQTT Base Topic is required when MQTT is enabled."); return; }
   }
   
   document.getElementById('mqttPassword').value = ''; 
@@ -289,7 +296,6 @@ function saveMqttConfig() {
   }, 7000); 
 }
 
-// ADDED: Function to save MQTT Discovery configuration
 function saveMqttDiscoveryConfig() {
   const discoveryConfig = {
     action: 'setMqttDiscoveryConfig',
@@ -308,4 +314,18 @@ function saveMqttDiscoveryConfig() {
   setTimeout(() => {
     document.getElementById('mqttDiscoveryRebootNotice').classList.add('hidden');
   }, 7000);
+}
+
+function triggerOtaUpdate() {
+  const otaButton = document.getElementById('otaUpdateButton');
+  if (confirm("Are you sure you want to check for firmware updates from GitHub and install if a new version is found? The device will reboot.")) {
+    if (otaButton) {
+        otaButton.disabled = true;
+        otaButton.innerText = "Checking...";
+    }
+    const otaStatusEl = document.getElementById('otaStatusMessage');
+    if (otaStatusEl) otaStatusEl.innerText = "Requesting update check...";
+    
+    sendCommand({ action: 'triggerOtaUpdate' });
+  }
 }

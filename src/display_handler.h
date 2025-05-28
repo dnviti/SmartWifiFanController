@@ -17,11 +17,13 @@ void displayConfirmRebootMenu();
 
 // MQTT Menu Display Functions
 void displayMqttSettingsMenu();
-void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly = false, int maxLength = 16); // Added maxLength
+void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly = false, int maxLength = 16); 
 
-// MQTT Discovery Menu Display Functions - ADDED DECLARATIONS
+// MQTT Discovery Menu Display Functions
 void displayMqttDiscoverySettingsMenu();
-// void displayMqttDiscoveryPrefixEntryMenu(); // Will reuse displayMqttEntryMenu
+
+// OTA Update Menu Display Function - NEW
+void displayOtaUpdateMenu();
 
 
 #endif // DISPLAY_HANDLER_H

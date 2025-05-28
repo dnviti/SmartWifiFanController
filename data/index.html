@@ -12,6 +12,7 @@
     <div class="container">
       <div id="debugModeNotice" class="debug-notice hidden">DEBUG MODE ACTIVE (Serial Commands Enabled)</div>
       <h1>PC Fan Controller (ESP32 - SPIFFS)</h1>
+      <p>Firmware Version: <span id="firmwareVersion">--</span></p> 
       <div class="data-grid">
         <span class="data-label">Temperature:</span> <span id="temp" class="data-value">--</span> &deg;C
         <span class="data-label">Fan Speed:</span> <span id="fanSpeed" class="data-value">--</span> %
@@ -81,8 +82,21 @@
         <button onclick="saveMqttDiscoveryConfig()" class="secondary">Save Discovery Config</button>
          <p class="reboot-notice hidden" id="mqttDiscoveryRebootNotice">A reboot is required for Discovery settings to take full effect.</p>
       </div>
-      </div>
-    </div> 
+    </div>
+
+    <div class="container ota-update-container">
+        <h2>Firmware Update (OTA from GitHub)</h2>
+        <div id="otaStatusContainer">
+            <p>Status: <span id="otaStatusMessage" class="data-value">Idle</span></p>
+        </div>
+        <button id="otaUpdateButton" onclick="triggerOtaUpdate()">Check for Updates & Install</button>
+        <p style="font-size:0.9em; color:#555;">
+            This will check the latest release on GitHub (<a href="https://github.com/dnviti/SmartWifiFanController/releases/latest" target="_blank" rel="noopener noreferrer">dnviti/SmartWifiFanController</a>) and update if a newer version is found.
+            The device will reboot automatically after a successful update. Ensure WiFi is connected.
+        </p>
+    </div>
+
+  </div> 
 
   <script src="script.js"></script>
 </body>

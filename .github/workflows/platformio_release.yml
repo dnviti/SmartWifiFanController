@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PIO_ENV: esp32_fancontrol # Your PlatformIO environment name from platformio.ini
+      # Filename for the downloaded CA certificate
+      CA_CERT_FILENAME: "github_api_ca.pem" # Changed name for clarity
+      GITHUB_API_HOST: "api.github.com"
 
     steps:
       - name: Checkout repository
@@ -23,16 +26,64 @@ jobs:
         with:
           python-version: "3.9" # PlatformIO recommends Python 3.9+
 
-      - name: Install PlatformIO Core
-        run: pip install -U platformio
+      - name: Install PlatformIO Core and OpenSSL
+        run: |
+          pip install -U platformio
+          sudo apt-get update && sudo apt-get install -y openssl
 
       - name: Install project dependencies
         run: pio pkg install --global # Installs libraries globally in the runner
 
+      - name: Create data directory if it doesn't exist
+        run: mkdir -p data
+
+      - name: Download GitHub API Root CA Certificate
+        run: |
+          echo "Attempting to download Root CA for ${{ env.GITHUB_API_HOST }}..."
+          # Connect to the server and print the certificate chain.
+          # Then, use awk to extract the *last* certificate in the chain (usually the Root CA).
+          openssl s_client -showcerts -connect ${{ env.GITHUB_API_HOST }}:443 -servername ${{ env.GITHUB_API_HOST }} < /dev/null 2>/dev/null | \
+          awk '
+            /BEGIN CERTIFICATE/ {
+              buffer=""
+              in_cert=1
+            }
+            in_cert {
+              buffer = buffer $0 "\n"
+            }
+            /END CERTIFICATE/ {
+              if (in_cert) {
+                # Overwrite last_cert with the current full certificate block
+                # This ensures that by the end, last_cert holds the final certificate in the chain
+                last_cert=buffer
+                in_cert=0 
+              }
+            }
+            END {
+              if (last_cert != "") {
+                print "Found a certificate, saving as data/${{ env.CA_CERT_FILENAME }}"
+                printf "%s", last_cert > "data/${{ env.CA_CERT_FILENAME }}"
+              } else {
+                echo "Error: Could not extract any certificate from ${{ env.GITHUB_API_HOST }}"
+                exit 1
+              }
+            }
+          '
+          if [ ! -s data/${{ env.CA_CERT_FILENAME }} ]; then
+            echo "Error: Failed to download or CA certificate file (data/${{ env.CA_CERT_FILENAME }}) is empty."
+            exit 1
+          fi
+          echo "GitHub API Root CA certificate downloaded successfully to data/${{ env.CA_CERT_FILENAME }}."
+          echo "--- Certificate Content (first 5 lines) ---"
+          head -n 5 data/${{ env.CA_CERT_FILENAME }}
+          echo "----------------------------------------"
+          ls -l data/
+        shell: bash
+
       - name: Build Firmware
         run: pio run -e ${{ env.PIO_ENV }}
 
-      - name: Build Filesystem Image
+      - name: Build Filesystem Image (includes downloaded CA cert)
         run: pio run -e ${{ env.PIO_ENV }} --target buildfs
 
       - name: Get Version from Branch
@@ -49,7 +100,6 @@ jobs:
           SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
           echo "FIRMWARE_ASSET_NAME=${FIRMWARE_NAME}" >> $GITHUB_ENV
           echo "SPIFFS_ASSET_NAME=${SPIFFS_NAME}" >> $GITHUB_ENV
-          # Copy built files to these new names for clarity in release assets
           cp .pio/build/${{ env.PIO_ENV }}/firmware.bin ${{ env.FIRMWARE_ASSET_NAME }}
           cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin ${{ env.SPIFFS_ASSET_NAME }}
         shell: bash
@@ -58,13 +108,14 @@ jobs:
         id: create_tagged_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION_TAG }} # This will be the tag created for the release
+          tag_name: ${{ env.VERSION_TAG }}
           name: Release ${{ env.VERSION_TAG }}
           body: |
             Automated release for version ${{ env.VERSION_TAG }} (from branch ${{ github.ref_name }}).
             Contains firmware and SPIFFS filesystem image.
+            The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
           draft: false
-          prerelease: ${{ contains(env.VERSION_TAG, '-') }} # Mark as prerelease if version contains '-' (e.g., v1.0.0-beta)
+          prerelease: ${{ contains(env.VERSION_TAG, '-') }}
           files: |
             ${{ env.FIRMWARE_ASSET_NAME }}
             ${{ env.SPIFFS_ASSET_NAME }}
@@ -74,22 +125,23 @@ jobs:
       - name: Delete 'latest' Release and Tag if they exist
         uses: dev-drprasad/delete-tag-and-release@v1.1
         with:
-          tag_name: latest # The tag name to delete
-          delete_release: true # Also delete the release associated with the tag
+          tag_name: latest
+          delete_release: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true # Continue if the 'latest' tag/release doesn't exist
+        continue-on-error: true
 
       - name: Create 'latest' Release
         id: create_latest_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest # This will also create/update a 'latest' tag
+          tag_name: latest
           name: Latest Build
           body: |
             This is the latest automated build.
             Based on version: ${{ env.VERSION_TAG }} (from branch ${{ github.ref_name }})
             Contains firmware and SPIFFS filesystem image.
+            The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
           draft: false
           prerelease: false
           files: |
