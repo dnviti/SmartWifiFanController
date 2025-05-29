@@ -34,7 +34,9 @@ jobs:
         run: pip install requests
 
       - name: Analyze Code and Create Issues
+        # Correctly execute the Python script
         run: |
+          python - <<EOF
           import os
           import json
           import requests
@@ -79,7 +81,8 @@ jobs:
                           # Further check if the file is within an excluded directory path string
                           is_excluded = False
                           for excluded_dir_path_str in excluded_dirs:
-                              if file_path_rel.startswith(excluded_dir_path_str + os.sep):
+                              # Ensure comparison is done correctly, e.g. by ensuring excluded_dir_path_str ends with a separator or is a full match
+                              if file_path_rel.startswith(excluded_dir_path_str + os.sep) or file_path_rel == excluded_dir_path_str :
                                   is_excluded = True
                                   break
                           if not is_excluded:
@@ -275,5 +278,6 @@ jobs:
                   print(f"No suggestions returned by AI for {file_path_rel}.")
 
           print("AI code analysis and issue creation process complete.")
+          EOF
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
