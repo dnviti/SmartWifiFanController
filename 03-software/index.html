@@ -1,0 +1,965 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://dnviti.github.io/SmartWifiFanController/03-software/">
+      
+      
+        <link rel="prev" href="../02-hardware/">
+      
+      
+        <link rel="next" href="../04-setup-and-installation/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>Software - SmartWifiFanController Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chapter-3-software" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="SmartWifiFanController Docs" class="md-header__button md-logo" aria-label="SmartWifiFanController Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SmartWifiFanController Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Software
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dnviti/SmartWifiFanController" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dnviti/SmartWifiFanController
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../01-introduction/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Introduction
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../02-hardware/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Hardware
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Software
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../04-setup-and-installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Setup and Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../05-usage-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Usage Guide
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../06-technical-details/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Technical Details
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../07-troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../08-future-enhancements/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Future Enhancements
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="SmartWifiFanController Docs" class="md-nav__button md-logo" aria-label="SmartWifiFanController Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    SmartWifiFanController Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dnviti/SmartWifiFanController" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dnviti/SmartWifiFanController
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Introduction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Hardware
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Software
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Software
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#31-development-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1. Development Environment
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#32-libraries-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2. Libraries Required
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#33-firmware-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3. Firmware Architecture
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#34-code-structure-key-files-in-src" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4. Code Structure (Key Files in src/)
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-setup-and-installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Setup and Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-usage-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Usage Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-technical-details/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Technical Details
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-future-enhancements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Future Enhancements
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="chapter-3-software"><strong>Chapter 3: Software</strong><a class="headerlink" href="#chapter-3-software" title="Permanent link">&para;</a></h1>
+<p>This chapter details the software aspects of the ESP32 PC Fan Controller, including the development environment, required libraries, firmware architecture, and the structure of the codebase.</p>
+<h2 id="31-development-environment"><strong>3.1. Development Environment</strong><a class="headerlink" href="#31-development-environment" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Recommended IDE: PlatformIO IDE within Visual Studio Code</strong>  </li>
+<li><strong>Why:</strong> PlatformIO offers superior library management (via platformio.ini), robust build system configuration, easy switching between boards/frameworks, and excellent integration with VS Code for features like IntelliSense, debugging, and version control.  </li>
+<li><strong>Alternative: Arduino IDE with ESP32 Core</strong>  </li>
+<li>Ensure the latest ESP32 core is installed via the Boards Manager.  </li>
+<li>Library management is done manually through the Arduino Library Manager.</li>
+</ul>
+<h2 id="32-libraries-required"><strong>3.2. Libraries Required</strong><a class="headerlink" href="#32-libraries-required" title="Permanent link">&para;</a></h2>
+<p>The following libraries are crucial for the project's functionality. When using PlatformIO, these are specified in the platformio.ini file for automatic management.</p>
+<ul>
+<li><strong>Core ESP32 Libraries (Bundled with ESP32 Arduino Core):</strong>  </li>
+<li>WiFi.h: For WiFi connectivity (station mode).  </li>
+<li>Wire.h: For I2C communication with the LCD and BMP280 sensor.  </li>
+<li>Preferences.h: For accessing Non-Volatile Storage (NVS) to save settings.  </li>
+<li>SPIFFS.h: For accessing the SPI Flash File System to serve web files.  </li>
+<li>Arduino.h: (Often implicitly included, but good practice to ensure core Arduino functions are available).  </li>
+<li><strong>Asynchronous</strong> Web <strong>Server &amp; TCP:</strong>  </li>
+<li><strong>AsyncTCP.h</strong>: (e.g., esp32async/AsyncTCP or me-no-dev/AsyncTCP for ESP32)  <ul>
+<li>Provides the underlying asynchronous TCP layer required by ESPAsyncWebServer.  </li>
+</ul>
+</li>
+<li><strong>ESPAsyncWebServer.h</strong>: (e.g., esp32async/ESPAsyncWebServer or me-no-dev/ESP Async WebServer)  <ul>
+<li>A lightweight and efficient asynchronous HTTP and WebSocket server library. Essential for handling web requests and WebSocket connections without blocking other operations.  </li>
+</ul>
+</li>
+<li><strong>WebSockets:</strong>  </li>
+<li><strong>WebSocketsServer.h</strong>: (e.g., links2004/WebSockets by Markus Sattler)  <ul>
+<li>Used to implement the WebSocket server for real-time bidirectional communication with the web UI.  </li>
+</ul>
+</li>
+<li><strong>Sensors:</strong>  </li>
+<li><strong>Adafruit_BMP280.h</strong>: (e.g., adafruit/Adafruit BMP280 Library)  <ul>
+<li>Driver for the BMP280 temperature and pressure sensor.  </li>
+</ul>
+</li>
+<li><strong>Adafruit_Sensor.h</strong>: (e.g., adafruit/Adafruit Unified Sensor)  <ul>
+<li>A unified sensor abstraction layer, a dependency for many Adafruit sensor libraries including the BMP280.  </li>
+</ul>
+</li>
+<li><strong>Display:</strong>  </li>
+<li><strong>LiquidCrystal_I2C.h</strong>: (e.g., marcoschwartz/LiquidCrystal_I2C or "LiquidCrystal I2C" by Frank de Brabander - ensure ESP32 compatibility).  <ul>
+<li>Controls I2C-based character LCDs.  </li>
+</ul>
+</li>
+<li><strong>JSON Handling:</strong>  </li>
+<li><strong>ArduinoJson.h</strong>: (e.g., bblanchon/ArduinoJson - version 7.x is recommended and used in the current codebase).  <ul>
+<li>Efficiently parses and generates JSON data for WebSocket communication.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Example platformio.ini lib_deps section:</strong></p>
+<div class="highlight"><pre><span></span><code>lib_deps = 
+    ; Async Web Server and TCP
+    ottowinter/ESPAsyncWebServer-esphome @ ^3.3.0     ; A well-maintained fork, or use me-no-dev/ESP Async WebServer
+    esphome/AsyncTCP-esphome @ ^2.1.4                 ; Dependency for the ESPAsyncWebServer fork above, or use me-no-dev/AsyncTCP
+
+    ; WebSockets
+    links2004/WebSockets @ ^2.6.1                     ; By Markus Sattler, very common
+
+    ; Temperature Sensor
+    adafruit/Adafruit BMP280 Library @ ^2.6.8
+    adafruit/Adafruit Unified Sensor @ ^1.1.15        ; Dependency for BMP280
+
+    ; I2C LCD
+    iakop/LiquidCrystal_I2C_ESP32 @ ^1.1.6           ; By Frank de Brabander
+
+    ; JSON Handling
+    bblanchon/ArduinoJson @ ^7.4.1
+</code></pre></div>
+<p><em>Note: Specific versions (@^x.y.z) can be added for better build reproducibility.</em></p>
+<h2 id="33-firmware-architecture"><strong>3.3. Firmware Architecture</strong><a class="headerlink" href="#33-firmware-architecture" title="Permanent link">&para;</a></h2>
+<p>The firmware is designed around the ESP32's dual-core capabilities using FreeRTOS tasks to ensure responsiveness and efficient handling of concurrent operations.</p>
+<ul>
+<li><strong>Dual-Core Task Allocation:</strong>  </li>
+<li><strong>Core 0 (Protocol Core - networkTask):</strong>  <ul>
+<li><strong>Responsibilities:</strong> Exclusively handles network-related operations.  </li>
+<li>Manages WiFi connection lifecycle (connecting, monitoring status).  </li>
+<li>Runs the ESPAsyncWebServer to serve static web files (HTML, CSS, JS) from SPIFFS.  </li>
+<li>Manages the WebSocketsServer for real-time communication with web clients.  </li>
+<li>Processes incoming WebSocket messages and sends outgoing data broadcasts.  </li>
+<li>This task is only created and run if WiFi is enabled in the configuration.  </li>
+</ul>
+</li>
+<li><strong>Core 1 (Application Core - mainAppTask):</strong>  <ul>
+<li><strong>Responsibilities:</strong> Handles all main device logic and user interaction.  </li>
+<li>Reads data from the BMP280 temperature sensor (if tempSensorFound).  </li>
+<li>Calculates fan RPM using the tachometer input via an ISR.  </li>
+<li>Manages the LCD, including updating the normal status display and rendering all menu screens.  </li>
+<li>Processing inputs from the physical buttons for LCD menu navigation.  </li>
+<li>Executing the core fan control algorithms (Auto mode based on temperature curve, Manual mode).  </li>
+<li>Handling commands received via the Serial interface (if serialDebugEnabled).  </li>
+<li>Updating shared state variables that are then read by networkTask for broadcasting.  </li>
+</ul>
+</li>
+<li><strong>Interrupt Service Routine (ISR):</strong>  </li>
+<li>countPulse(): Attached to the FAN_TACH_PIN_ACTUAL. This ISR increments a volatile pulse counter on each falling edge of the fan's tachometer signal. Being an ISR, it executes with high priority and minimal latency, ensuring accurate pulse counting even while other tasks are running.  </li>
+<li><strong>Shared Data and Inter-Task Communication:</strong>  </li>
+<li><strong>volatile Variables:</strong> Global variables shared between tasks (e.g., currentTemperature, fanRpm, isAutoMode, fanSpeedPercentage) are declared volatile to prevent compiler optimizations that might lead to stale data reads.  </li>
+<li><strong>needsImmediateBroadcast Flag:</strong> A volatile bool flag used by mainAppTask to signal networkTask that critical state has changed and an immediate WebSocket broadcast is required, rather than waiting for the next periodic broadcast.  </li>
+<li><strong>Fan Curve Arrays:</strong> tempPoints and pwmPercentagePoints are global. Updates from the web UI (via networkTask) or serial commands (via mainAppTask) modify these directly. NVS saving acts as the commit. For very high-frequency concurrent access, a mutex would be advisable, but for user-driven changes, this is generally acceptable.  </li>
+<li><strong>State-Driven Logic:</strong>  </li>
+<li>The system operates based on several key state flags like isAutoMode, isInMenuMode, isWiFiEnabled, and tempSensorFound. The behavior of tasks and functions adapts based on these states.</li>
+</ul>
+<p><strong>Conceptual Task Interaction:</strong></p>
+<div class="highlight"><pre><span></span><code>Core 0 (Network)                     Core 1 (Application)  
++------------------+                    +-----------------------+  
+|  networkTask     |&lt;-------------------| mainAppTask           |  
+| - WiFi Connect   | (needsBroadcast)   | - Read Sensors (Temp) |  
+| - Web Server     |                    | - Read Tachometer     |  
+| - WebSocket Srv  |---(Web Cmds)------&gt;|   (via ISR)           |  
+|   - Listen       |&lt;--(Shared State)---| - Update LCD          |  
+|   - Broadcast    |                    | - Handle Buttons      |  
++------------------+                    | - Handle Serial Cmds  |  
+                                        | - Fan Control Logic   |  
+                                        +-----------------------+  
+                                                  | (ISR)  
+                                        +-----------------------+  
+                                        | countPulse (Tach)     |  
+                                        +-----------------------+
+</code></pre></div>
+<h2 id="34-code-structure-key-files-in-src"><strong>3.4. Code Structure (Key Files in src/)</strong><a class="headerlink" href="#34-code-structure-key-files-in-src" title="Permanent link">&para;</a></h2>
+<p>The project is organized into several header (.h) and source (.cpp) files to promote modularity and maintainability:</p>
+<ul>
+<li><strong>main.cpp:</strong>  </li>
+<li>Includes all other custom headers.  </li>
+<li>Contains the definitions for all global variables declared extern in config.h.  </li>
+<li>The main setup() function: Initializes hardware, loads configurations from NVS, and creates the FreeRTOS tasks.  </li>
+<li>The main loop() function: Kept minimal, as primary operations are handled by FreeRTOS tasks.  </li>
+<li><strong>config.h:</strong>  </li>
+<li>Central header file included by most other files.  </li>
+<li>Defines constants (pin numbers, PWM parameters, array sizes like MAX_CURVE_POINTS).  </li>
+<li>Contains extern declarations for all global variables and objects (e.g., lcd, server, bmp, state flags). This allows other files to access these globals after they are defined in main.cpp.  </li>
+<li>Defines enums (e.g., MenuScreen).  </li>
+<li><strong>nvs_handler.h / nvs_handler.cpp:</strong>  </li>
+<li>Encapsulates all functions related to Non-Volatile Storage (NVS) using the Preferences library.  </li>
+<li>saveWiFiConfig(), loadWiFiConfig()  </li>
+<li>saveFanCurveToNVS(), loadFanCurveFromNVS()  </li>
+<li><strong>fan_control.h / fan_control.cpp:</strong>  </li>
+<li>Contains logic related to fan operation.  </li>
+<li>setDefaultFanCurve(): Initializes the default fan curve.  </li>
+<li>calculateAutoFanPWMPercentage(): Calculates the target fan speed based on temperature and the current curve.  </li>
+<li>setFanSpeed(): Applies a given percentage to the fan via PWM (using ESP32 LEDC functions).  </li>
+<li>IRAM_ATTR countPulse(): The Interrupt Service Routine for counting fan tachometer pulses.  </li>
+<li><strong>display_handler.h / display_handler.cpp:</strong>  </li>
+<li>Manages all output to the I2C LCD.  </li>
+<li>updateLCD_NormalMode(): Renders the standard status display.  </li>
+<li>displayMenu(): Main function to call specific menu rendering functions.  </li>
+<li>displayMainMenu(), displayWiFiSettingsMenu(), etc.: Functions to render each specific screen of the LCD menu system.  </li>
+<li><strong>input_handler.h / input_handler.cpp:</strong>  </li>
+<li>Handles user inputs.  </li>
+<li>handleMenuInput(): Processes physical button presses, debounces them, and updates menu states or triggers actions.  </li>
+<li>handleSerialCommands(): Parses and executes commands received via the Serial interface when debug mode is active.  </li>
+<li>Includes helper functions called by menu/serial actions like performWiFiScan(), attemptWiFiConnection(), disconnectWiFi().  </li>
+<li><strong>network_handler.h / network_handler.cpp:</strong>  </li>
+<li>Manages all web-related functionalities.  </li>
+<li>setupWebServerRoutes(): Configures the AsyncWebServer to serve static files (index.html, style.css, script.js) from SPIFFS.  </li>
+<li>webSocketEvent(): The callback function for handling WebSocket events (connect, disconnect, text messages). Parses incoming JSON commands from the web UI.  </li>
+<li>broadcastWebSocketData(): Constructs and sends JSON data containing the current system status to all connected WebSocket clients.  </li>
+<li><strong>tasks.h / tasks.cpp:</strong>  </li>
+<li>Defines and implements the FreeRTOS tasks.  </li>
+<li>networkTask(void *pvParameters): The function executed by Core 0.  </li>
+<li>mainAppTask(void *pvParameters): The function executed by Core 1.  </li>
+<li>Includes extern TaskHandle_t declarations for task handles (definitions are in main.cpp).</li>
+</ul>
+<p>This modular structure makes the codebase easier to understand, debug, and extend.</p>
+<p><a href="../02-hardware/">Previous Chapter: Hardware</a> | <a href="../04-setup-and-installation/">Next Chapter: Setup and Installation</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate", "navigation.top", "search.suggest", "search.highlight", "content.tabs.link", "content.code.annotation", "content.code.copy"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>

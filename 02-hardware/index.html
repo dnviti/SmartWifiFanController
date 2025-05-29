@@ -1,0 +1,951 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://dnviti.github.io/SmartWifiFanController/02-hardware/">
+      
+      
+        <link rel="prev" href="../01-introduction/">
+      
+      
+        <link rel="next" href="../03-software/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>Hardware - SmartWifiFanController Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chapter-2-hardware" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="SmartWifiFanController Docs" class="md-header__button md-logo" aria-label="SmartWifiFanController Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SmartWifiFanController Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Hardware
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dnviti/SmartWifiFanController" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dnviti/SmartWifiFanController
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../01-introduction/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Introduction
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Hardware
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../03-software/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Software
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../04-setup-and-installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Setup and Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../05-usage-guide/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Usage Guide
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../06-technical-details/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Technical Details
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../07-troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../08-future-enhancements/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Future Enhancements
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="SmartWifiFanController Docs" class="md-nav__button md-logo" aria-label="SmartWifiFanController Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    SmartWifiFanController Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dnviti/SmartWifiFanController" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dnviti/SmartWifiFanController
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Introduction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Hardware
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Hardware
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#21-required-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1. Required Components
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#22-recommended-hardware-stack-component-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2. Recommended Hardware Stack &amp; Component Details
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#23-wiring-considerations-high-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3. Wiring Considerations (High-Level)
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-software/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Software
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-setup-and-installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Setup and Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-usage-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Usage Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-technical-details/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Technical Details
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-future-enhancements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Future Enhancements
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="chapter-2-hardware">Chapter 2: Hardware<a class="headerlink" href="#chapter-2-hardware" title="Permanent link">&para;</a></h1>
+<p>This chapter details the necessary and recommended hardware components for building the ESP32 PC Fan Controller, along with high-level wiring considerations.</p>
+<h2 id="21-required-components">2.1. Required Components<a class="headerlink" href="#21-required-components" title="Permanent link">&para;</a></h2>
+<p>The following components are essential for a basic functional version of the project:</p>
+<ul>
+<li><strong>Microcontroller:</strong><ul>
+<li>An ESP32-based development board. Common choices include generic ESP32 DevKits (often with the ESP32-WROOM-32 module) or specific boards like the uPesy ESP32 Wroom DevKit. Ensure it has sufficient GPIO pins for all planned peripherals.</li>
+</ul>
+</li>
+<li><strong>Display:</strong><ul>
+<li>16x2 I2C Character LCD Display: Must have an I2C backpack module (commonly using the PCF8574 I/O expander chip) to simplify wiring. The I2C address is typically <code>0x27</code> or <code>0x3F</code>.</li>
+</ul>
+</li>
+<li><strong>Navigation Inputs:</strong><ul>
+<li>5x Tactile Push Buttons: For Menu, Up, Down, Select, and Back functions.</li>
+</ul>
+</li>
+<li><strong>PC Fan(s):</strong><ul>
+<li>At least one standard 4-pin PWM PC cooling fan (12V). The project is designed around 4-pin fans for PWM speed control.</li>
+</ul>
+</li>
+<li><strong>Power Supply Components:</strong><ul>
+<li><strong>12V DC Source:</strong> This will power the fans directly and be stepped down for the ESP32. Options:<ul>
+<li>PC Power Supply Unit (PSU): Using a Molex or SATA power connector (requires appropriate adapter/wiring).</li>
+<li>Motherboard Fan Header: Can supply 12V, but ensure the total current draw of your controller and connected fan(s) does not exceed the header's limit (typically 1A, but check motherboard specs).</li>
+<li>External 12V DC Power Adapter: If building a standalone unit.</li>
+</ul>
+</li>
+<li><strong>12V to 5V Buck Converter Module:</strong> Essential for stepping down the 12V input to a stable 5V suitable for the ESP32's VIN pin. Modules based on the MP1584EN, LM2596 (use with caution, quality varies), or similar switching regulators are common. Ensure its current rating is sufficient for the ESP32 and any other 5V peripherals.</li>
+</ul>
+</li>
+<li><strong>Resistors:</strong><ul>
+<li><strong>Pull-up Resistors for I2C (if not on modules):</strong> Typically 2x 4.7kΩ or 10kΩ resistors (one for SDA, one for SCL, connected to 3.3V). Many sensor and display modules include these.</li>
+<li><strong>Pull-up Resistor for Fan Tachometer:</strong> 1x 10kΩ resistor connected between the fan's tachometer signal line and the ESP32's 3.3V supply.</li>
+<li><em>(Optional for Buttons):</em> If not using the ESP32's internal <code>INPUT_PULLUP</code> mode, you'll need pull-up or pull-down resistors (e.g., 5x 10kΩ) for each button.</li>
+</ul>
+</li>
+<li><strong>Logic Level Shifter (for Fan PWM - Highly Recommended):</strong><ul>
+<li>To convert the ESP32's 3.3V logic level PWM signal to the 5V TTL signal expected by most PC fans. This ensures reliable fan speed control across a wider range of fans. A simple N-channel MOSFET (like BSS138) with two resistors (e.g., 10kΩ) per fan channel can be used.</li>
+</ul>
+</li>
+<li><strong>Jumper/Switch (for Debug Mode):</strong><ul>
+<li>A simple SPST switch or a 2-pin header with a jumper to connect the <code>DEBUG_ENABLE_PIN</code> to 3.3V (to enable debug) or leave it pulled low (to disable).</li>
+</ul>
+</li>
+<li><strong>Connectors:</strong><ul>
+<li>At least one 4-pin male PC fan header for connecting the fan to your controller.</li>
+<li>Appropriate connectors for your 12V power input.</li>
+</ul>
+</li>
+<li><strong>Prototyping Supplies:</strong><ul>
+<li>Breadboard(s).</li>
+<li>Jumper Wires (male-male, male-female).</li>
+</ul>
+</li>
+</ul>
+<h2 id="22-recommended-hardware-stack-component-details">2.2. Recommended Hardware Stack &amp; Component Details<a class="headerlink" href="#22-recommended-hardware-stack-component-details" title="Permanent link">&para;</a></h2>
+<p>For a higher quality, more robust, and aesthetically pleasing build:</p>
+<ul>
+<li><strong>Microcontroller:</strong> <strong>ESP32-WROOM-32E</strong> or <strong>ESP32-WROOM-32UE</strong>.<ul>
+<li><em>Reasoning:</em> These are current-generation modules with good performance, reliability, and community support. The "UE" variant offers a U.FL connector for an external antenna, which can be crucial if the controller is housed in a metal PC case that might attenuate the onboard antenna's WiFi signal.</li>
+</ul>
+</li>
+<li><strong>Temperature Sensor (Optional):</strong> <strong>BMP280 (I2C)</strong>.<ul>
+<li><em>Reasoning:</em> Provides accurate temperature readings, is digitally interfaced (I2C), low power, and widely available at a low cost. The pressure data it also provides is not used by this project but doesn't hurt.</li>
+</ul>
+</li>
+<li><strong>Display:</strong> <strong>0.96" or 1.3" I2C OLED Display (SSD1306 or SH1106 controller)</strong>.<ul>
+<li><em>Reasoning:</em> Offers significantly better readability, contrast, and viewing angles than standard 16x2 character LCDs. They can display more information graphically and contribute to a more "premium" feel. <em>Note: The current firmware uses the <code>LiquidCrystal_I2C</code> library. Switching to an OLED would require using a different display library (e.g., Adafruit SSD1306 or U8g2) and rewriting the display-related functions.</em></li>
+</ul>
+</li>
+<li><strong>Power Regulation:</strong> <strong>Integrated Buck Converter on Custom PCB</strong> (using ICs like MP2307, MP1584EN, TPS54331) or a <strong>high-quality MP1584EN-based module</strong>.<ul>
+<li><em>Reasoning:</em> Stable and clean power is vital for the ESP32 and sensor accuracy. Integrating the buck converter onto a custom PCB allows for better layout, component selection, and a more compact design. If using a module, avoid the cheapest unbranded LM2596 modules as their performance and ripple can be poor.</li>
+</ul>
+</li>
+<li><strong>Fan PWM Logic Level Shifter:</strong> <strong>MOSFET-based (BSS138) or dedicated IC (e.g., 74AHCT125, 74LVC1T45)</strong>.<ul>
+<li><em>Reasoning:</em> Ensures the fan receives a proper 5V PWM signal, maximizing compatibility and control range. A BSS138 with two 10kΩ pull-up resistors (one to 3.3V on the ESP32 side, one to 5V on the fan side) is a common and effective single-channel solution.</li>
+</ul>
+</li>
+<li><strong>Buttons:</strong> <strong>Good quality, PCB-mounted tactile switches</strong>.<ul>
+<li><em>Reasoning:</em> Provide reliable input and good tactile feedback. When paired with a custom enclosure and button caps, they contribute to a professional product feel.</li>
+</ul>
+</li>
+<li><strong>Final Build:</strong> <strong>Custom PCB and a well-designed Enclosure</strong>.<ul>
+<li><em>Reasoning:</em> A PCB is non-negotiable for a reliable and presentable final product. An enclosure (e.g., 3D printed with PETG/ASA for temperature resistance, or a custom-machined/lasercut box) protects the electronics and greatly enhances the overall aesthetic and perceived value. Consider ventilation in the enclosure design.</li>
+</ul>
+</li>
+</ul>
+<h2 id="23-wiring-considerations-high-level">2.3. Wiring Considerations (High-Level)<a class="headerlink" href="#23-wiring-considerations-high-level" title="Permanent link">&para;</a></h2>
+<p><em>(A detailed Fritzing diagram or schematic would be ideal here in a full project repository, but for text-based documentation, a description is provided.)</em></p>
+<ul>
+<li><strong>ESP32 Power:</strong><ul>
+<li>12V DC input connects to the VIN of your 12V-to-5V buck converter.</li>
+<li>GND of the 12V input connects to the GND of the buck converter.</li>
+<li>5V output from the buck converter connects to the ESP32's VIN (or 5V) pin.</li>
+<li>GND output from the buck converter connects to an ESP32 GND pin.</li>
+</ul>
+</li>
+<li><strong>Fan(s):</strong><ul>
+<li><strong>GND (Pin 1):</strong> Connect to the common ground of your circuit (shared with ESP32 GND).</li>
+<li><strong>+12V (Pin 2):</strong> Connect directly to your 12V power source (the same source feeding the buck converter).</li>
+<li><strong>Tachometer/Sense (Pin 3):</strong> Connect to the designated ESP32 GPIO (<code>FAN_TACH_PIN_ACTUAL</code>). A 10kΩ pull-up resistor should be connected between this GPIO pin and the ESP32's 3.3V line.</li>
+<li><strong>Control/PWM (Pin 4):</strong> Connect to the output of your 3.3V-to-5V logic level shifter. The input of the logic level shifter connects to the ESP32's <code>FAN_PWM_PIN</code> GPIO.</li>
+</ul>
+</li>
+<li><strong>I2C Devices (LCD &amp; BMP280):</strong><ul>
+<li><strong>SDA:</strong> Connect ESP32's SDA pin (typically GPIO21) to the SDA pins of both the LCD and BMP280.</li>
+<li><strong>SCL:</strong> Connect ESP32's SCL pin (typically GPIO22) to the SCL pins of both the LCD and BMP280.</li>
+<li><strong>VCC:</strong> LCD VCC to 5V (from buck converter). BMP280 VCC to 3.3V (from ESP32's 3V3 pin).</li>
+<li><strong>GND:</strong> Connect to common ground.</li>
+<li><strong>Pull-up Resistors:</strong> If not already present on the modules, add 4.7kΩ-10kΩ pull-up resistors from SDA to 3.3V and SCL to 3.3V.</li>
+</ul>
+</li>
+<li><strong>Buttons:</strong><ul>
+<li>Connect one terminal of each button to a dedicated ESP32 GPIO pin (e.g., <code>BTN_MENU_PIN</code>, <code>BTN_UP_PIN</code>, etc.).</li>
+<li>Connect the other terminal of each button to GND.</li>
+<li>The firmware will use the ESP32's internal pull-up resistors (<code>INPUT_PULLUP</code>).</li>
+</ul>
+</li>
+<li><strong>Debug Enable Pin:</strong><ul>
+<li>Connect <code>DEBUG_ENABLE_PIN</code> to one terminal of a switch or jumper header.</li>
+<li>Connect the other terminal of the switch/jumper header to 3.3V.</li>
+<li>The pin is configured with <code>INPUT_PULLDOWN</code> in the firmware, so leaving it open or connected to GND will disable debug mode. Connecting it to 3.3V will enable debug mode.</li>
+</ul>
+</li>
+<li><strong>Debug LED:</strong><ul>
+<li>Connect the anode (longer leg) of an LED to <code>LED_DEBUG_PIN</code> (GPIO2).</li>
+<li>Connect the cathode (shorter leg) of the LED to a current-limiting resistor (e.g., 220Ω - 330Ω).</li>
+<li>Connect the other end of the resistor to GND.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Simplified Block Diagram Concept:</strong></p>
+<div class="highlight"><pre><span></span><code>                                 +-----------+
+                                 |   12V DC  |
+                                 |   Input   |
+                                 +-----+-----+
+                                       | (12V)
+                                       |
+                             +---------v-------+     +--------+
+                             |  12V to 5V Buck |----&gt;| PC Fan | (12V Power)
+                             |   Converter     |     | (12V)  |
+                             +---------+-------+     +----+---+
+                                       | (5V)             | (Tach)
+                                       |                  |
++--------------------------------------v------------------v------------------------------------------+
+|                                                                                                     |
+|  +-----------+   (I2C)    +---------+      (I2C)     +-----------------+                            |
+|  |   LCD     |&lt;----------&gt;|  ESP32  |&lt;--------------&gt;| BMP280 Sensor   |                            |
+|  | (5V/3.3V) |            | (3.3V)  |&lt;------(3.3V)---| (Optional)      |                            |
+|  +-----------+            +----+----+                +-----------------+                            |
+|                              | | | |                                                                |
+|  +-----------+  (GPIOs)      | | | `----(3.3V PWM)---&gt;[Logic Shifter]---&gt;(5V PWM)--+--------------+ |
+|  | Buttons   |&lt;--------------&#39; | `----(GPIO for Tach)--&gt;(Pulled up to 3.3V)&lt;-------| Fan Tach Pin | |
+|  | (5x)      |                 |                                                   +--------------+ |
+|  +-----------+                 `----(GPIO for Debug LED)-------------------------&gt;[Debug LED]       |
+|                                                                                                     |
+|  +---------------------+  (GPIO)                                                                    |
+|  | Debug Enable Switch |&lt;---------------------------------------------------------------------------+
+|  +---------------------+
++-----------------------------------------------------------------------------------------------------+
+</code></pre></div>
+<p>This detailed hardware setup provides a solid foundation for a reliable and feature-rich fan controller. Always double-check your specific ESP32 board's pinout diagram.</p>
+<p><a href="../01-introduction/">Previous Chapter: Introduction</a> | <a href="../03-software/">Next Chapter: Software</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate", "navigation.top", "search.suggest", "search.highlight", "content.tabs.link", "content.code.annotation", "content.code.copy"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>
