@@ -1,13 +1,26 @@
 #include "fan_control.h"
 #include "config.h" // For global variables
 
+// Define the named constant for the default number of curve points
+static constexpr int DEFAULT_CURVE_POINT_COUNT = 5;
+
 void setDefaultFanCurve() {
-    numCurvePoints = 5;
+    // Ensure the default count does not exceed the maximum allowed points
+    static_assert(DEFAULT_CURVE_POINT_COUNT <= MAX_CURVE_POINTS, "Default curve point count exceeds maximum allowed points.");
+    
+    numCurvePoints = DEFAULT_CURVE_POINT_COUNT;
+    // Initialize the default curve points. 
+    // IMPORTANT: If DEFAULT_CURVE_POINT_COUNT changes, these initializers must also be updated.
     tempPoints[0] = 25; pwmPercentagePoints[0] = 0;  
     tempPoints[1] = 35; pwmPercentagePoints[1] = 20; 
     tempPoints[2] = 45; pwmPercentagePoints[2] = 50; 
     tempPoints[3] = 55; pwmPercentagePoints[3] = 80; 
     tempPoints[4] = 60; pwmPercentagePoints[4] = 100;
+    // If DEFAULT_CURVE_POINT_COUNT was, for example, 3, the lines for tempPoints[3], [4] etc. would be out of bounds
+    // or simply unused if the loop in calculateAutoFanPWMPercentage respects numCurvePoints.
+    // The current structure correctly uses numCurvePoints to iterate, so unused points beyond numCurvePoints are harmless
+    // as long as DEFAULT_CURVE_POINT_COUNT doesn't exceed MAX_CURVE_POINTS.
+
     if(serialDebugEnabled) Serial.println("[SYSTEM] Default fan curve set.");
 }
 
