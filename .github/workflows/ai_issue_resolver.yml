@@ -12,6 +12,11 @@ on:
         required: false
         default: ''
         type: string
+      gemini_model_override: # New input for model override
+        description: 'Optional: Override the default Gemini model (e.g., gemini-1.5-pro-latest). Default is gemini-2.5-flash-preview-05-20.'
+        required: false
+        default: ''
+        type: string
       max_issues_to_process:
         description: 'Maximum number of open issues to attempt to process in this run'
         required: false
@@ -33,7 +38,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
       TARGET_BRANCH: develop 
-      GEMINI_MODEL: "gemini-2.5-pro-preview-05-06" 
+      GEMINI_MODEL_DEFAULT: "gemini-2.5-flash-preview-05-20" # Updated default model
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
       GITHUB_REPOSITORY_NWO: ${{ github.repository }}
@@ -76,7 +81,11 @@ jobs:
 
           # --- Configuration ---
           GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-          GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro-preview-05-06')
+          # Get model from workflow input if provided, else use default from env
+          GEMINI_MODEL_OVERRIDE = os.getenv('INPUT_GEMINI_MODEL_OVERRIDE', '')
+          GEMINI_MODEL_DEFAULT_FROM_ENV = os.getenv('GEMINI_MODEL_DEFAULT', 'gemini-2.5-flash-preview-05-20')
+          GEMINI_MODEL_NAME = GEMINI_MODEL_OVERRIDE if GEMINI_MODEL_OVERRIDE else GEMINI_MODEL_DEFAULT_FROM_ENV
+          
           GH_TOKEN = os.getenv('GH_TOKEN') 
           REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO') 
           TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'develop') 
@@ -85,7 +94,7 @@ jobs:
           AI_PR_CREATED_LABEL = os.getenv('AI_PR_CREATED_LABEL', 'ai-pr-created')
           
           ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
-          ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '').lower() # Get the label input and lowercase it
+          ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '').lower() 
           MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
 
@@ -93,14 +102,13 @@ jobs:
           RELEVANT_EXTENSIONS = ['*.cpp', '*.h', '*.ino', '*.py', '*.js', '*.html', '*.css', '*.md', '*.yml', '*.json', '*.txt', '*.csv', '*.S']
           MAX_CONTEXT_CHARS = 2 * 1024 * 1024 
 
-          # GitFlow branch prefix mapping
           BRANCH_PREFIX_MAP = {
               "bug": "bugfix/",
               "enhancement": "feature/",
               "documentation": "docs/",
               "refactor": "refactor/"
           }
-          DEFAULT_BRANCH_PREFIX = "fix/" # Default for other labels or no label
+          DEFAULT_BRANCH_PREFIX = "fix/" 
 
           if not GEMINI_API_KEY:
               print("Error: GEMINI_API_KEY environment variable not set.")
@@ -129,7 +137,7 @@ jobs:
                       if issue_obj.state == 'open':
                           has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
                           has_requested_label = True 
-                          if ISSUE_LABEL_INPUT: # Check if the specific issue has the requested label if one was provided
+                          if ISSUE_LABEL_INPUT: 
                               has_requested_label = any(label.name.lower() == ISSUE_LABEL_INPUT for label in issue_obj.labels)
                           
                           if has_ai_label:
@@ -162,13 +170,11 @@ jobs:
                               continue 
 
                           branch_prefix = BRANCH_PREFIX_MAP.get(ISSUE_LABEL_INPUT, DEFAULT_BRANCH_PREFIX) if ISSUE_LABEL_INPUT else DEFAULT_BRANCH_PREFIX
-                          # If no specific label input, but issue itself has a mapped label, use that.
-                          # This part makes it more dynamic if ISSUE_LABEL_INPUT is blank.
                           if not ISSUE_LABEL_INPUT:
                               for label_obj in issue_obj.labels:
                                   if label_obj.name.lower() in BRANCH_PREFIX_MAP:
                                       branch_prefix = BRANCH_PREFIX_MAP[label_obj.name.lower()]
-                                      break # Use the first matching label for prefix
+                                      break 
 
                           branch_name = f"{branch_prefix}ai-issue-{issue_obj.number}"
                           
@@ -221,8 +227,8 @@ jobs:
               return full_context
 
           def call_gemini_api(prompt_text):
-              # ... (content as before)
-              print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
+              # ... (content as before, uses GEMINI_MODEL_NAME which is now configurable)
+              print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...") # Uses the determined model name
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
                   response = model.generate_content(
@@ -252,10 +258,15 @@ jobs:
                   return False
               try:
                   print("  AI Response to parse (first 500 chars): " + ai_response_text[:500])
-                  pattern = re.compile(r"FILENAME:\s*(.*?)\n```(?:[a-zA-Z0-9_.-]*)?\n(.*?)\n```", re.DOTALL)
+                  pattern = re.compile(
+                      r"FILENAME:\s*(.*?)(?:\r\n|\r|\n)" 
+                      r"```(?:[a-zA-Z0-9_.-]*)?(?:\r\n|\r|\n)" 
+                      r"(.*?)(?:\r\n|\r|\n)```", 
+                      re.DOTALL 
+                  )
                   matches = pattern.findall(ai_response_text)
                   if not matches:
-                      print("  No valid FILENAME: ... ```...``` blocks found in AI response.")
+                      print("  No valid FILENAME: ... ```...``` blocks found in AI response using regex.")
                       return False
                   for match in matches:
                       file_path_to_change = match[0].strip()
@@ -305,6 +316,7 @@ jobs:
           # --- Main Processing Logic ---
           def main():
               print(f"Starting AI Issue Resolver for repository: {REPO_NWO}")
+              print(f"Using Gemini Model: {GEMINI_MODEL_NAME}") # Log the model being used
               print(f"Target branch for PRs: {TARGET_BRANCH}") 
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
               print(f"Label for processed issues: {AI_PR_CREATED_LABEL}")
@@ -329,17 +341,16 @@ jobs:
               for issue_obj in issues: 
                   print(f"\nProcessing Issue #{issue_obj.number}: {issue_obj.title}")
                   
-                  # Determine branch prefix based on input label or issue's labels
                   branch_prefix_to_use = DEFAULT_BRANCH_PREFIX
-                  current_issue_label_for_prefix = ISSUE_LABEL_INPUT # Prioritize workflow input label
+                  current_issue_label_for_prefix = ISSUE_LABEL_INPUT 
                   
-                  if not current_issue_label_for_prefix: # If no input label, check issue's own labels
+                  if not current_issue_label_for_prefix: 
                       for label_obj in issue_obj.labels:
                           if label_obj.name.lower() in BRANCH_PREFIX_MAP:
                               current_issue_label_for_prefix = label_obj.name.lower()
                               break 
                   
-                  if current_issue_label_for_prefix: # If we have a label (either input or from issue)
+                  if current_issue_label_for_prefix: 
                       branch_prefix_to_use = BRANCH_PREFIX_MAP.get(current_issue_label_for_prefix, DEFAULT_BRANCH_PREFIX)
 
                   branch_name = f"{branch_prefix_to_use}ai-issue-{issue_obj.number}"
@@ -484,7 +495,8 @@ jobs:
       - name: Run AI Issue Processor Script
         env: 
           INPUT_ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
-          INPUT_ISSUE_LABEL: ${{ github.event.inputs.issue_label }} # Pass the new input to the script
+          INPUT_ISSUE_LABEL: ${{ github.event.inputs.issue_label }} 
+          INPUT_GEMINI_MODEL_OVERRIDE: ${{ github.event.inputs.gemini_model_override }} # Pass the new model override input
           INPUT_MAX_ISSUES_TO_PROCESS: ${{ github.event.inputs.max_issues_to_process }}
           INPUT_ALLOW_PR_CREATION: ${{ github.event.inputs.allow_pr_creation }}
         run: python .github/scripts/ai_issue_processor.py 
