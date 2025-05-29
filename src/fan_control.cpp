@@ -1,13 +1,26 @@
 #include "fan_control.h"
-#include "config.h" // For global variables
+#include "config.h" // For global variables like numCurvePoints, tempPoints, MAX_CURVE_POINTS
+
+// Static assertion to ensure MAX_CURVE_POINTS (from config.h) is sufficient 
+// for the default curve points (DEFAULT_CURVE_POINT_COUNT from fan_control.h).
+// This prevents buffer overflows if MAX_CURVE_POINTS is set too low.
+static_assert(MAX_CURVE_POINTS >= DEFAULT_CURVE_POINT_COUNT, 
+              "MAX_CURVE_POINTS in config.h is too small for the default fan curve. "
+              "It must be >= DEFAULT_CURVE_POINT_COUNT defined in fan_control.h. "
+              "Please increase MAX_CURVE_POINTS in config.h.");
 
 void setDefaultFanCurve() {
-    numCurvePoints = 5;
+    numCurvePoints = DEFAULT_CURVE_POINT_COUNT; // Use the defined constant for number of points
+    
+    // These assignments write to indices 0 through 4, requiring 5 points.
+    // This is safe because DEFAULT_CURVE_POINT_COUNT is 5, and the static_assert 
+    // ensures MAX_CURVE_POINTS is at least 5.
     tempPoints[0] = 25; pwmPercentagePoints[0] = 0;  
     tempPoints[1] = 35; pwmPercentagePoints[1] = 20; 
     tempPoints[2] = 45; pwmPercentagePoints[2] = 50; 
     tempPoints[3] = 55; pwmPercentagePoints[3] = 80; 
     tempPoints[4] = 60; pwmPercentagePoints[4] = 100;
+    
     if(serialDebugEnabled) Serial.println("[SYSTEM] Default fan curve set.");
 }
 

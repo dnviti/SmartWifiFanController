@@ -3,6 +3,10 @@
 
 #include "config.h"
 
+// Define the number of points in the default fan curve set by setDefaultFanCurve()
+// This value is used for static assertion against MAX_CURVE_POINTS.
+constexpr int DEFAULT_CURVE_POINT_COUNT = 5;
+
 void setDefaultFanCurve();
 int calculateAutoFanPWMPercentage(float temp);
 void setFanSpeed(int percentage);
