@@ -73,7 +73,11 @@ jobs:
           MAX_RETRIES = 5
           INITIAL_BACKOFF = 3  # Initial backoff delay in seconds
           INTER_FILE_DELAY = 2 # Seconds to wait between processing each file
-          OPENAI_MODEL_NAME = 'o4-mini'
+          # Ensure this model name is correct and matches what you intend to use.
+          # The logs indicated 'o4-mini', which might map to 'gpt-4o-mini'.
+          # If 'gpt-4o-mini' is the correct model identifier for the API, use that.
+          # Otherwise, use a model known to support temperature changes or omit it.
+          OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_OVERRIDE', 'gpt-4o-mini') # Default to gpt-4o-mini, can be overridden by env var
 
           OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
           if not OPENAI_API_KEY:
@@ -98,7 +102,6 @@ jobs:
               backoff_time = INITIAL_BACKOFF
               
               # --- Construct your prompt for OpenAI ---
-              # System message can set the context for the AI
               system_message = "You are an expert C++ code reviewer. Analyze the provided code snippet."
               user_prompt = f"Please analyze the following code from the file '{file_path}'. Identify potential bugs, suggest improvements for clarity, performance, and adherence to C++ best practices. Provide specific, actionable feedback. If there are multiple points, list them clearly.\n\n```cpp\n{file_content}\n```\n\nSuggestions:"
               # -----------------------------------------
@@ -106,13 +109,16 @@ jobs:
               while retries < MAX_RETRIES:
                   try:
                       # --- OpenAI API Call (Chat Completions) ---
+                      # Removed explicit temperature setting to use model's default,
+                      # as 'o4-mini' (likely gpt-4o-mini) errored with temperature=0.5.
+                      # If a different model is used that supports temperature, it can be added back.
                       response = client.chat.completions.create(
                           model=OPENAI_MODEL_NAME,
                           messages=[
                               {"role": "system", "content": system_message},
                               {"role": "user", "content": user_prompt}
                           ],
-                          temperature=0.5, # Adjust temperature for creativity vs. determinism
+                          # temperature=0.5, # Removed based on error for o4-mini
                           # max_tokens=1500, # Adjust as needed
                       )
                       suggestions = response.choices[0].message.content.strip()
@@ -121,10 +127,14 @@ jobs:
                       print(f"Successfully received analysis for {file_path} from OpenAI on attempt {retries + 1}.")
                       return suggestions
 
-                  except openai.APIError as e: # Catch specific OpenAI errors
-                      # Handle API error here, e.g. retry or log
+                  except openai.APIError as e: 
                       error_str = str(e).lower()
-                      # OpenAI uses 429 for rate limits, 5xx for server errors
+                      # Check for specific error related to 'temperature' for the current model
+                      if e.status_code == 400 and e.body and 'param' in e.body and e.body['param'] == 'temperature' and 'unsupported_value' in e.body.get('code',''):
+                          print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' does not support the specified temperature or temperature setting. Error: {e.body.get('message')}")
+                          print("Skipping analysis for this file due to model parameter incompatibility.")
+                          return f"_Analysis skipped for this file: Model '{OPENAI_MODEL_NAME}' does not support the provided temperature setting. Error: {e.body.get('message')}_"
+
                       if e.status_code == 429 or "rate limit" in error_str or "too many requests" in error_str:
                           retries += 1
                           if retries >= MAX_RETRIES:
@@ -132,10 +142,9 @@ jobs:
                               print(f"Error: Failed to get suggestions for {file_path} after {MAX_RETRIES} attempts.")
                               return None
                           
-                          # Get retry-after header if available, otherwise use exponential backoff
                           retry_after = e.headers.get("retry-after")
                           if retry_after:
-                              wait_time = int(retry_after) + random.uniform(0, 0.5) # Add small jitter
+                              wait_time = int(retry_after) + random.uniform(0, 0.5) 
                               print(f"OpenAI API rate limit hit for {file_path} (attempt {retries}/{MAX_RETRIES}). Retrying after {wait_time:.2f} seconds (from header)... Error: {e}")
                           else:
                               wait_time = backoff_time + random.uniform(0, 1.5)
@@ -143,7 +152,7 @@ jobs:
                               backoff_time *= 2
                           
                           time.sleep(wait_time)
-                      elif e.status_code >= 500: # Server-side errors, retry
+                      elif e.status_code >= 500: 
                           retries += 1
                           if retries >= MAX_RETRIES:
                               print(f"Warning: Max retries reached for {file_path} due to server error. Error calling OpenAI API (attempt {retries}/{MAX_RETRIES}): {e}")
@@ -151,15 +160,14 @@ jobs:
                           wait_time = backoff_time + random.uniform(0, 1.5)
                           print(f"OpenAI API server error for {file_path} (attempt {retries}/{MAX_RETRIES}). Retrying in {wait_time:.2f} seconds... Error: {e}")
                           time.sleep(wait_time)
-                          backoff_time *= 1.5 # Less aggressive backoff for server errors
+                          backoff_time *= 1.5 
                       else:
-                          # Non-retryable API error or other OpenAI error
                           print(f"An unexpected OpenAI API error occurred for {file_path}: {e}")
+                          if e.body: # Log more details if available
+                              print(f"Error details: {e.body}")
                           return None
                   except Exception as e:
-                      # Handle other types of errors (e.g., network issues not caught by openai.APIError)
                       print(f"A general error occurred while calling OpenAI API for {file_path}: {e}")
-                      # Basic retry for general errors too, could be refined
                       retries += 1
                       if retries >= MAX_RETRIES:
                           return None
@@ -184,13 +192,8 @@ jobs:
               
               api_url = f"https://api.github.com/repos/{repo_name}/issues"
               data = {"title": title, "body": body_content}
-              if pr_number: # If PR number exists, try to comment on the PR
-                  # Note: To comment on a PR, you usually post to the PR's issue URL comments
-                  # Or directly to /repos/{owner}/{repo}/pulls/{pull_number}/comments for review comments on diff
-                  # This example keeps it simple by creating an issue that references the PR.
-                  # For a direct PR comment, the API endpoint and data structure would change.
+              if pr_number: 
                   data["body"] = f"AI Code Analysis for PR #{pr_number}:\n\n{body_content}"
-
 
               # --- This part requires the 'requests' library. Ensure it's installed. ---
               # import requests 
@@ -212,7 +215,7 @@ jobs:
               else:
                 print(f"Action: Would create issue in {repo_name}")
               print(f"Title: {title}")
-              print(f"Body:\n{data['body']}") # Use the potentially modified body
+              print(f"Body:\n{data['body']}") 
               print(f"-----------------------------")
 
 
@@ -247,9 +250,13 @@ jobs:
                   suggestions = call_openai_api_with_backoff(file_path, file_content)
                   
                   if suggestions:
-                      print(f"Suggestions received for {file_path}.")
+                      # Check if suggestions indicate a skip due to model incompatibility
+                      if "_Analysis skipped for this file" in suggestions:
+                          print(f"Suggestions for {file_path} indicate a skip due to model parameter issue.")
+                      else:
+                          print(f"Suggestions received for {file_path}.")
+                          analysis_successful_count +=1
                       all_suggestions_for_report.append(f"### Suggestions for `{file_path}`:\n\n{suggestions}\n\n---\n")
-                      analysis_successful_count +=1
                   else:
                       print(f"No suggestions were returned by AI for {file_path} after retries.")
                       all_suggestions_for_report.append(f"### Suggestions for `{file_path}`:\n\n_No suggestions were returned by the AI after {MAX_RETRIES} attempts._\n\n---\n")
