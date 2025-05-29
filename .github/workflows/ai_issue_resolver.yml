@@ -24,7 +24,7 @@ on:
       allow_pr_creation:
         description: 'Set to "true" to allow the script to create Pull Requests'
         required: true
-        default: 'false' # Default to false for safety
+        default: 'true' # Default to false for safety
 
 permissions:
   contents: write      # To create branches, commit, push
