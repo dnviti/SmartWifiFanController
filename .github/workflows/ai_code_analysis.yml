@@ -9,7 +9,7 @@ on:
   workflow_dispatch: # Allows manual triggering
     inputs:
       custom_openai_model:
-        description: 'OpenAI Model to use (e.g., 4o-mini, gpt-4-turbo). Leave empty for script default.'
+        description: 'OpenAI Model to use (e.g., o4-mini, gpt-4o-mini). Leave empty for script default.'
         required: false
         default: '' # Default to empty, script will use its own default
 
