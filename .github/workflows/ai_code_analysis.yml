@@ -1,283 +1,367 @@
-# .github/workflows/ai_code_analysis.yml
-name: AI Code Analysis & Issue Creation
-
+name: AI Code Analysis (ChatGPT - Individual Issues)
 on:
+  pull_request:
+    paths: # Specify paths to trigger the workflow on PRs
+      - 'src/**.cpp'
+      - 'src/**.h'
+      - 'test/**.cpp'
+      # Add other relevant file types and paths
   workflow_dispatch: # Allows manual triggering
     inputs:
-      branch:
-        description: 'Branch to analyze'
-        required: true
-        default: 'main'
-
-permissions:
-  contents: read    # To checkout the repository
-  issues: write     # To create GitHub issues
+      custom_openai_model:
+        description: 'OpenAI Model to use (e.g., o4-mini, gpt-4o-mini). Leave empty for script default.'
+        required: false
+        default: '' # Default to empty, script will use its own default
 
 jobs:
-  analyze_and_create_issues:
+  analyze-code:
     runs-on: ubuntu-latest
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    # You can define the environment variable at the job level if you prefer
+    # env:
+    #   OPENAI_MODEL_NAME_OVERRIDE_JOB_LEVEL: 'gpt-4-turbo' # Example
+    permissions:
+      contents: read          # To checkout the repository
+      pull-requests: read    # To read PR details if needed (e.g., PR number for context)
+      issues: write          # REQUIRED to create issues
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0 # Fetches all history for accurate diffs
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10' # Or your preferred Python version
 
       - name: Install dependencies
-        run: pip install requests
-
-      - name: Analyze Code and Create Issues
-        # Correctly execute the Python script
         run: |
-          python - <<EOF
-          import os
-          import json
-          import requests
-          import time
+          python -m pip install --upgrade pip
+          pip install openai
+          pip install requests # For creating GitHub issues
 
-          GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-          if not GEMINI_API_KEY:
-              print("::error::GEMINI_API_KEY secret not found.")
+      - name: Get changed files
+        id: changed_files
+        run: |
+          echo "Determining files to analyze..."
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            MERGE_BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+            FILES=$(git diff --name-only $MERGE_BASE HEAD | grep -E '\.(cpp|h|c|hpp|cc|hh|cxx|hxx)$' | tr '\n' ' ')
+          else # For workflow_dispatch or other events, analyze all relevant files
+            echo "Triggered by workflow_dispatch or other event. Python script will handle file discovery if FILES_TO_ANALYZE='*'."
+            FILES="*" # Signal to Python script to find all files
+          fi
+          if [ -z "$FILES" ]; then
+            echo "No relevant files found by git diff or FILES_TO_ANALYZE not set to '*' for full scan."
+            echo "files_to_analyze=''" >> $GITHUB_OUTPUT
+          else
+            echo "Files to analyze (or '*' for full scan): $FILES"
+            echo "files_to_analyze=$FILES" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Run AI Code Analysis Script (ChatGPT - Individual Issues)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          REPO_NAME: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Use the workflow_dispatch input if available, otherwise it will be empty,
+          # and the Python script will use its internal default.
+          OPENAI_MODEL_NAME_OVERRIDE: ${{ github.event.inputs.custom_openai_model || '' }}
+          FILES_TO_ANALYZE: "${{ steps.changed_files.outputs.files_to_analyze }}" # Pass the determined files or "*"
+        run: |
+          import os
+          import time
+          import random
+          import json
+          import openai
+          import requests # For GitHub API calls
+
+          # --- Configuration ---
+          MAX_RETRIES = 5
+          INITIAL_BACKOFF = 5
+          INTER_FILE_DELAY = 3
+          DEFAULT_OPENAI_MODEL_NAME = '4o-mini' # Default model
+          OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', DEFAULT_OPENAI_MODEL_NAME)
+          if not OPENAI_MODEL_NAME.strip(): # If override is empty string, use default
+              OPENAI_MODEL_NAME = DEFAULT_OPENAI_MODEL_NAME
+              
+          RELEVANT_EXTENSIONS = ('.cpp', '.h', '.c', '.hpp', '.cc', '.hh', '.cxx', '.hxx')
+          EXCLUDE_DIRS = ['.git', '.github', 'build', 'dist', 'venv', '.venv', 'node_modules', '__pycache__', 'docs/build']
+          EXCLUDE_FILES = ['LICENSE', 'LICENSE.md', 'CONTRIBUTING.md']
+
+          OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+          if not OPENAI_API_KEY:
+              print("Error: OPENAI_API_KEY not found in environment variables.")
               exit(1)
 
-          GITHUB_TOKEN = os.getenv('GITHUB_TOKEN') # Provided by GitHub Actions
-          REPO_NAME = os.getenv('GITHUB_REPOSITORY') # e.g., owner/repo
-          GEMINI_MODEL_NAME = "gemini-1.5-flash-latest" # Or "gemini-1.5-pro-latest"
-          
-          # --- Configuration for file discovery ---
-          # Directories to scan for source files
-          scan_directories = ["src", "test"] 
-          # File extensions to consider for analysis
-          target_extensions = (".cpp", ".h", ".hpp", ".c", ".cc") 
-          # Directories to exclude from scanning (relative to repo root)
-          excluded_dirs = [".pio", "data", "docs", ".git", ".github"] 
-          # Specific files to exclude (full path relative to repo root or just filename)
-          excluded_files = ["script.js", "style.css", "index.html"] # Add more if needed
+          # This will now be printed in the GitHub Actions log
+          print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}' (Script default was: '{DEFAULT_OPENAI_MODEL_NAME}')")
 
-          files_to_analyze = []
-          repo_root = os.getcwd()
+          try:
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            print(f"Successfully configured OpenAI client.") 
+          except Exception as e:
+            print(f"Error configuring OpenAI client: {e}")
+            exit(1)
 
-          for directory in scan_directories:
-              scan_path = os.path.join(repo_root, directory)
-              if not os.path.exists(scan_path):
-                  print(f"::warning::Directory to scan not found: {scan_path}")
-                  continue
-              for root, dirs, files in os.walk(scan_path):
-                  # Filter out excluded directories
-                  dirs[:] = [d for d in dirs if os.path.join(root, d) not in [os.path.join(repo_root, ed) for ed in excluded_dirs] and d not in excluded_dirs]
-                  
-                  for file in files:
-                      file_path_abs = os.path.join(root, file)
-                      file_path_rel = os.path.relpath(file_path_abs, repo_root)
-                      
-                      if file.endswith(target_extensions) and file not in excluded_files and file_path_rel not in excluded_files:
-                          # Further check if the file is within an excluded directory path string
-                          is_excluded = False
-                          for excluded_dir_path_str in excluded_dirs:
-                              # Ensure comparison is done correctly, e.g. by ensuring excluded_dir_path_str ends with a separator or is a full match
-                              if file_path_rel.startswith(excluded_dir_path_str + os.sep) or file_path_rel == excluded_dir_path_str :
-                                  is_excluded = True
-                                  break
-                          if not is_excluded:
-                              files_to_analyze.append(file_path_rel)
-          
-          if not files_to_analyze:
-              print("::warning::No files found to analyze based on the criteria.")
-              exit(0)
-          
-          print("Files selected for analysis:")
-          for f_path in files_to_analyze:
-              print(f"- {f_path}")
-
-
-          # JSON schema expected from Gemini
-          expected_schema = {
-              "type": "OBJECT",
-              "properties": {
-                  "suggestions": {
-                      "type": "ARRAY",
-                      "items": {
-                          "type": "OBJECT",
-                          "properties": {
-                              "type": { "type": "STRING", "enum": ["bug_fix", "feature_suggestion", "improvement"] },
-                              "title": { "type": "STRING" },
-                              "description": { "type": "STRING" },
-                              "file_path": { "type": "STRING" },
-                              "severity": { "type": "STRING", "enum": ["low", "medium", "high", "enhancement"], "optional": True }
-                          },
-                          "required": ["type", "title", "description", "file_path"]
-                      }
-                  }
-              },
-              "required": ["suggestions"]
-          }
-
-          def call_gemini_api(file_content, file_path):
-              print(f"::group::Analyzing {file_path} with Gemini")
-              api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
-              
-              prompt = f"""
-              You are an expert C++/ESP32 code reviewer. Analyze the following C++ code from the file `{file_path}`.
-              The project is an ESP32-based fan controller.
-              Identify potential bugs with suggested fixes, propose new features, or suggest general code improvements.
-              For each suggestion, provide a type ('bug_fix', 'feature_suggestion', or 'improvement'), a concise title for a GitHub issue,
-              a detailed description (use Markdown for formatting if helpful), the file_path it pertains to, and an optional severity ('low', 'medium', 'high' for bugs, 'enhancement' for features/improvements).
-
-              Respond ONLY with a JSON object matching the following schema. Do not include any other text before or after the JSON object:
-              ```json
-              {json.dumps(expected_schema, indent=2)}
-              ```
-
-              Code to analyze:
-              ```cpp
-              {file_content}
-              ```
+          def call_openai_for_issues(file_path, file_content):
               """
+              Calls OpenAI API, expecting a JSON array of issue objects.
+              Each issue object should have 'title', 'description', and 'category'.
+              """
+              print(f"Requesting AI analysis for issues in {file_path} using {OPENAI_MODEL_NAME}...")
+              retries = 0
+              backoff_time = INITIAL_BACKOFF
+              
+              system_message = (
+                  "You are an expert C++ code reviewer. Your task is to analyze the provided code snippet "
+                  "and identify distinct issues. These issues can be bugs, areas for improvement/refactoring, "
+                  "or suggestions for new features directly related to THIS code snippet. "
+                  "For each distinct issue you identify, provide a JSON object with the following fields:\n"
+                  "- \"title\": A concise title for a GitHub issue (max 80 characters).\n"
+                  "- \"description\": A detailed Markdown-formatted description of the issue. Explain the problem or "
+                  "suggestion, why it's relevant, and if possible, suggest a fix or implementation idea. "
+                  f"Reference the file path '{file_path}' in your description.\n"
+                  "- \"category\": Classify the issue. Choose ONLY from: \"bug\", \"enhancement\", \"refactor\", \"documentation\", \"feature_suggestion\".\n"
+                  "Return a JSON array containing these issue objects. If no issues are found for this specific file, return an empty JSON array []."
+              )
+              user_prompt = (
+                  f"Analyze the following C++ code from the file '{file_path}'. "
+                  "Focus only on issues present in or directly suggested by THIS code. "
+                  "Remember to provide your response strictly as a JSON array of issue objects, or an empty array if no issues are found.\n\n"
+                  f"File Path: {file_path}\n"
+                  "```cpp\n" 
+                  f"{file_content}\n"
+                  "```\n"
+                  "JSON Array of Issues:"
+              )
 
-              payload = {
-                  "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                  "generationConfig": {
-                      "responseMimeType": "application/json",
-                      "temperature": 0.3, 
-                      "topP": 0.9,
-                      "topK": 40
-                  }
-              }
-              
-              headers = {'Content-Type': 'application/json'}
-              
-              max_retries = 3
-              for attempt in range(max_retries):
+              while retries < MAX_RETRIES:
                   try:
-                      response = requests.post(api_url, headers=headers, json=payload, timeout=180) 
-                      response.raise_for_status() 
+                      response = client.chat.completions.create(
+                          model=OPENAI_MODEL_NAME,
+                          messages=[
+                              {"role": "system", "content": system_message},
+                              {"role": "user", "content": user_prompt}
+                          ],
+                          response_format={"type": "json_object"}, 
+                      )
+                      response_content = response.choices[0].message.content.strip()
                       
                       try:
-                          result_json = response.json()
-                          if "candidates" in result_json and result_json["candidates"] and \
-                             "content" in result_json["candidates"][0] and \
-                             "parts" in result_json["candidates"][0]["content"] and \
-                             result_json["candidates"][0]["content"]["parts"]:
-                              
-                              raw_text_response = result_json["candidates"][0]["content"]["parts"][0].get("text", "")
-                              try:
-                                  parsed_suggestions = json.loads(raw_text_response)
-                                  if "suggestions" in parsed_suggestions:
-                                      print(f"Successfully parsed suggestions for {file_path}")
-                                      print("::endgroup::")
-                                      return parsed_suggestions["suggestions"]
-                                  else:
-                                      print(f"::warning::Gemini response for {file_path} did not contain 'suggestions' key in the parsed text part.")
-                                      print(f"Raw text response: {raw_text_response}")
-
-                              except json.JSONDecodeError as je:
-                                  print(f"::error::Failed to decode JSON from Gemini's text response for {file_path}: {je}")
-                                  print(f"Gemini raw text response: {raw_text_response}")
+                          parsed_response = json.loads(response_content)
+                          if isinstance(parsed_response, list):
+                              issues = parsed_response
+                          elif isinstance(parsed_response, dict) and "issues" in parsed_response and isinstance(parsed_response["issues"], list):
+                              issues = parsed_response["issues"]
+                          elif isinstance(parsed_response, dict) and "suggestions" in parsed_response and isinstance(parsed_response["suggestions"], list):
+                              issues = parsed_response["suggestions"]
                           else:
-                              print(f"::warning::Gemini response structure for {file_path} was not as expected.")
-                              print(f"Full Gemini response: {result_json}")
+                              print(f"AI returned a JSON object, but expected an array or a dict with a known key for issues. Content: {response_content[:200]}...")
+                              try:
+                                  potential_list = json.loads(response_content)
+                                  if isinstance(potential_list, list):
+                                      issues = potential_list
+                                  else:
+                                      issues = [] 
+                              except json.JSONDecodeError:
+                                   issues = [] 
 
-                      except json.JSONDecodeError as e:
-                          print(f"::error::Failed to decode JSON from Gemini response for {file_path}: {e}")
-                          print(f"Gemini raw response content: {response.text}")
-                      
-                      break 
-                  except requests.exceptions.RequestException as e:
-                      print(f"::warning::Error calling Gemini API for {file_path} (attempt {attempt + 1}/{max_retries}): {e}")
-                      if attempt < max_retries - 1:
-                          time.sleep(5 * (attempt + 1)) 
+                          print(f"Successfully received and parsed AI analysis for {file_path} on attempt {retries + 1}. Found {len(issues)} potential issues.")
+                          return issues
+                      except json.JSONDecodeError:
+                          print(f"Warning: AI response for {file_path} was not valid JSON on attempt {retries + 1}. Response: {response_content[:500]}...")
+                          if retries >= MAX_RETRIES -1:
+                            return [{"title": f"AI Analysis Error: Non-JSON Response for {file_path}", 
+                                      "description": f"The AI's response for `{file_path}` was not valid JSON and could not be parsed after {MAX_RETRIES} attempts.\n\nRaw response snippet:\n```\n{response_content[:1000]}\n```",
+                                      "category": "internal_error", "file_path": file_path}] 
+                  
+                  except openai.APIError as e:
+                      error_str = str(e).lower()
+                      if hasattr(e, 'code') and e.code == 'model_not_found':
+                          print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' not found or access denied. Error: {e}")
+                          return [{"title": f"AI Model Not Found: {OPENAI_MODEL_NAME}", "description": f"Analysis skipped for `{file_path}`: The OpenAI model '{OPENAI_MODEL_NAME}' was not found or your API key does not have access to it. Please verify the model name and your API key permissions. Error details: {e}", "category": "configuration_error", "file_path": file_path}]
+
+                      if e.status_code == 400 and hasattr(e, 'body') and e.body and 'param' in e.body and e.body.get('param') == 'temperature' and 'unsupported_value' in e.body.get('code',''):
+                          print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' does not support the specified temperature or temperature setting. Error: {e.body.get('message')}")
+                          return [{"title": f"AI Model Config Error for {file_path}", "description": f"Analysis skipped for `{file_path}`: Model '{OPENAI_MODEL_NAME}' does not support current temperature settings. Error: {e.body.get('message')}", "category": "configuration_error", "file_path": file_path}]
+
+                      if e.status_code == 429 or "rate limit" in error_str or "too many requests" in error_str:
+                          retries += 1
+                          if retries >= MAX_RETRIES:
+                              print(f"Max retries reached for {file_path}. Error: {e}")
+                              return None
+                          
+                          retry_after_header = e.headers.get("retry-after")
+                          wait_time = backoff_time
+                          if retry_after_header:
+                              try:
+                                  wait_time = int(retry_after_header) + random.uniform(0, 1)
+                                  print(f"OpenAI API rate limit for {file_path}. Retrying after {wait_time:.2f}s (from header). Error: {e}")
+                              except ValueError:
+                                  print(f"OpenAI API rate limit for {file_path}. Invalid retry-after header. Using exponential backoff: {wait_time:.2f}s. Error: {e}")
+                                  backoff_time *= 2
+                          else:
+                              print(f"OpenAI API rate limit for {file_path}. Retrying in {wait_time:.2f}s. Error: {e}")
+                              backoff_time *= 2
+                          time.sleep(wait_time)
+                      elif e.status_code >= 500:
+                          retries += 1
+                          if retries >= MAX_RETRIES: return None
+                          wait_time = backoff_time + random.uniform(0, 1.5)
+                          print(f"OpenAI API server error for {file_path}. Retrying in {wait_time:.2f}s. Error: {e}")
+                          time.sleep(wait_time)
+                          backoff_time *= 1.5
                       else:
-                          print(f"::error::Failed to get suggestions for {file_path} after {max_retries} attempts.")
-              
-              print("::endgroup::")
-              return []
+                          print(f"Unexpected OpenAI API error for {file_path}: {e}")
+                          if hasattr(e, 'body') and e.body: print(f"Error details: {e.body}")
+                          return None 
+                  except Exception as e:
+                      print(f"General error calling OpenAI for {file_path}: {e}")
+                      retries += 1
+                      if retries >= MAX_RETRIES: return None
+                      time.sleep(backoff_time + random.uniform(0,1.5))
+                      backoff_time *= 2
+              return None
 
+          def create_github_issue(title, body, labels=None):
+              github_token = os.getenv('GITHUB_TOKEN')
+              repo_name = os.getenv('REPO_NAME')
+              if not github_token or not repo_name:
+                  print("Error: GITHUB_TOKEN or REPO_NAME not set. Cannot create issue.")
+                  print(f"Skipped Issue Title: {title}\nBody:\n{body}\nLabels: {labels}")
+                  return False
 
-          def create_github_issue(title, body, file_path, suggestion_type, severity=None):
-              print(f"::group::Creating issue for: {title}")
-              url = f"https://api.github.com/repos/{REPO_NAME}/issues"
+              api_url = f"https://api.github.com/repos/{repo_name}/issues"
               headers = {
-                  "Authorization": f"token {GITHUB_TOKEN}",
-                  "Accept": "application/vnd.github.v3+json"
+                  "Authorization": f"token {github_token}",
+                  "Accept": "application/vnd.github.v3+json",
+                  "X-GitHub-Api-Version": "2022-11-28"
               }
+              data = {"title": title, "body": body}
+              if labels:
+                  data["labels"] = labels
               
-              labels = ["AI Generated", suggestion_type.replace("_", "-")]
-              if severity:
-                  labels.append(f"severity-{severity}")
-              if "feature" in suggestion_type or "improvement" in suggestion_type:
-                  labels.append("enhancement")
-              elif "bug" in suggestion_type:
-                  labels.append("bug")
-
-
-              issue_body = f"**File:** `{file_path}`\n\n"
-              issue_body += f"**Suggestion Type:** {suggestion_type.replace('_', ' ').title()}\n"
-              if severity:
-                  issue_body += f"**AI Severity/Priority:** {severity.title()}\n\n"
-              issue_body += "---\n\n"
-              issue_body += f"{body}\n\n"
-              issue_body += "---\n\n"
-              issue_body += "_This issue was automatically generated by an AI code analysis workflow._"
-
-              data = {
-                  "title": f"[AI Suggestion] {title}",
-                  "body": issue_body,
-                  "labels": labels
-              }
-              
-              response = requests.post(url, headers=headers, json=data)
-              if response.status_code == 201:
-                  print(f"Successfully created issue: {response.json()['html_url']}")
-              else:
-                  print(f"::error::Failed to create GitHub issue for '{title}'. Status: {response.status_code}, Response: {response.text}")
-              print("::endgroup::")
-
-
-          for file_path_rel in files_to_analyze: # Iterate over relative paths
-              absolute_file_path = os.path.join(repo_root, file_path_rel)
-              if not os.path.exists(absolute_file_path): # Should not happen if discovery was correct
-                  print(f"::warning::File not found during processing: {absolute_file_path}. Skipping.")
-                  continue
-
-              print(f"Processing file: {file_path_rel}")
+              response = None 
               try:
-                  with open(absolute_file_path, 'r', encoding='utf-8') as f:
-                      content = f.read()
+                  response = requests.post(api_url, json=data, headers=headers)
+                  response.raise_for_status() 
+                  print(f"Successfully created GitHub issue: '{title}'. URL: {response.json().get('html_url')}")
+                  return True
+              except requests.exceptions.RequestException as e:
+                  print(f"Failed to create GitHub issue '{title}'. Error: {e}")
+                  if response is not None:
+                      print(f"Response status: {response.status_code}, Response text: {response.text}")
+                  return False
               except Exception as e:
-                  print(f"::error::Could not read file {file_path_rel}: {e}")
-                  continue
-              
-              if not content.strip():
-                  print(f"::warning::File {file_path_rel} is empty. Skipping.")
-                  continue
+                  print(f"An unexpected error occurred during GitHub issue creation: {e}")
+                  return False
 
-              suggestions = call_gemini_api(content, file_path_rel) # Pass relative path to Gemini
-              
-              if suggestions:
-                  for suggestion in suggestions:
-                      s_type = suggestion.get('type', 'improvement')
-                      s_title = suggestion.get('title', f"AI Suggestion for {file_path_rel}")
-                      s_description = suggestion.get('description', "No description provided by AI.")
-                      # Ensure AI uses the relative path it was given, or fall back
-                      s_file_path_from_ai = suggestion.get('file_path', file_path_rel) 
-                      s_severity = suggestion.get('severity')
-                      
-                      if "AI Suggestion for" in s_title and len(s_description) > 50:
-                          s_title = f"[AI] {s_type.replace('_', ' ').title()}: {s_description[:50].strip()}..."
+          def get_all_repo_files(root_dir=".", extensions=RELEVANT_EXTENSIONS, exclude_dirs=EXCLUDE_DIRS, exclude_files=EXCLUDE_FILES):
+              repo_files = []
+              abs_exclude_dirs = [os.path.abspath(os.path.join(root_dir, d)) for d in exclude_dirs]
+              for dirpath, dirnames, filenames in os.walk(root_dir):
+                  dirnames[:] = [d for d in dirnames if os.path.abspath(os.path.join(dirpath, d)) not in abs_exclude_dirs and not d.startswith('.')]
+                  for filename in filenames:
+                      if filename.lower().endswith(extensions) and filename not in exclude_files:
+                          full_path = os.path.join(dirpath, filename)
+                          repo_files.append(os.path.normpath(full_path))
+              return repo_files
 
-                      create_github_issue(s_title, s_description, s_file_path_from_ai, s_type, s_severity)
-                      time.sleep(2) 
+          def main():
+              print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}' (Script default was: '{DEFAULT_OPENAI_MODEL_NAME}')")
+
+              files_to_analyze_input = os.getenv('FILES_TO_ANALYZE')
+              files_to_analyze = []
+
+              if files_to_analyze_input == "*":
+                  print("FILES_TO_ANALYZE is '*', scanning repository for relevant files...")
+                  current_directory = os.getcwd() 
+                  print(f"Scanning from directory: {current_directory}")
+                  files_to_analyze = get_all_repo_files(root_dir=current_directory)
+                  if not files_to_analyze:
+                      print(f"No files found with extensions {RELEVANT_EXTENSIONS} in the repository (excluding specified directories/files).")
+                      exit(0)
+              elif files_to_analyze_input:
+                  files_to_analyze = [f.strip() for f in files_to_analyze_input.strip().split(' ') if f.strip()]
               else:
-                  print(f"No suggestions returned by AI for {file_path_rel}.")
+                  print("FILES_TO_ANALYZE environment variable not set or empty, and not '*'. Assuming no files to analyze for this run.")
+                  exit(0) 
+              
+              if not files_to_analyze:
+                  print("No valid file paths to analyze.")
+                  exit(0)
+                  
+              print(f"Files queued for analysis ({len(files_to_analyze)}): {files_to_analyze}")
+              total_issues_created = 0
 
-          print("AI code analysis and issue creation process complete.")
-          EOF
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              for i, file_path in enumerate(files_to_analyze):
+                  print(f"\nProcessing file {i+1}/{len(files_to_analyze)}: {file_path}")
+                  try:
+                      if not os.path.exists(file_path):
+                          print(f"Error: File not found - {file_path}. Skipping.")
+                          continue
+
+                      with open(file_path, 'r', encoding='utf-8') as f:
+                          file_content = f.read()
+                      
+                      if not file_content.strip():
+                          print(f"Skipping empty file: {file_path}")
+                          continue
+
+                      MAX_FILE_SIZE_CHARS = 100 * 1024 
+                      if len(file_content) > MAX_FILE_SIZE_CHARS:
+                          print(f"Warning: File {file_path} is very large ({len(file_content)} chars). Truncating to {MAX_FILE_SIZE_CHARS} characters for AI analysis to manage token limits.")
+                          file_content = file_content[:MAX_FILE_SIZE_CHARS]
+
+                      identified_issues = call_openai_for_issues(file_path, file_content)
+                      
+                      if identified_issues is None:
+                          print(f"AI analysis failed for {file_path} after retries.")
+                      elif not identified_issues:
+                          print(f"AI found no specific issues to report for {file_path}.")
+                      else:
+                          print(f"AI identified {len(identified_issues)} potential issues for {file_path}.")
+                          for issue_data in identified_issues:
+                              if not isinstance(issue_data, dict) or not all(k in issue_data for k in ["title", "description", "category"]):
+                                  print(f"Warning: Invalid issue format received from AI for {file_path}. Skipping: {issue_data}")
+                                  continue
+
+                              path_for_filename = issue_data.get('file_path', file_path) 
+                              filename_only = os.path.basename(path_for_filename)
+                              category_prefix = issue_data['category'].replace('_', ' ').title()
+                              title = f"AI ({category_prefix}): {issue_data['title']} in `{filename_only}`"
+                              
+                              pr_number_env = os.getenv('PR_NUMBER')
+                              pr_context = f"\n\n_Context: Analysis triggered by PR #{pr_number_env}_" if pr_number_env else ""
+                              body = f"**File:** `{file_path}`\n\n{issue_data['description']}{pr_context}"
+                              
+                              category = issue_data['category'].lower()
+                              labels = ["AI Suggested"]
+                              valid_categories_for_labels = ["bug", "enhancement", "refactor", "documentation", "feature_suggestion", "configuration_error", "internal_error"]
+                              if category in valid_categories_for_labels:
+                                labels.append(category.replace('_', '-')) 
+                              else:
+                                labels.append("ai-misc")
+
+                              if create_github_issue(title, body, labels):
+                                  total_issues_created += 1
+                              time.sleep(1) 
+
+                  except FileNotFoundError:
+                      print(f"Error: File not found - {file_path}")
+                  except Exception as e:
+                      print(f"Error processing file {file_path}: {e}")
+                  
+                  if len(files_to_analyze) > 1 and i < len(files_to_analyze) - 1:
+                      print(f"Waiting for {INTER_FILE_DELAY} seconds before processing the next file...")
+                      time.sleep(INTER_FILE_DELAY)
+              
+              print(f"\nAI code analysis (OpenAI) process complete. Total GitHub issues created: {total_issues_created}")
+
+          if __name__ == "__main__":
+              main()
+        shell: python
