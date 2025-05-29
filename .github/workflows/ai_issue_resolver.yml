@@ -67,13 +67,13 @@ jobs:
           import google.generativeai as genai
           import subprocess
           import fnmatch 
-          import re # For more robust parsing
+          import re 
 
           # --- Configuration ---
           GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
           GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro-preview-05-06')
           PYGITHUB_TOKEN = os.getenv('GH_TOKEN') 
-          ACTION_PAT_FOR_PR_AND_PUSH = os.getenv('ACTION_PAT') 
+          ACTION_PAT = os.getenv('ACTION_PAT') # Renamed variable
           REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO') 
           TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'develop') 
           GIT_COMMIT_USER_NAME = os.getenv('GIT_COMMIT_USER_NAME')
@@ -93,7 +93,7 @@ jobs:
           if not PYGITHUB_TOKEN: 
               print("Error: GH_TOKEN (for PyGithub) environment variable not set.")
               sys.exit(1)
-          if ALLOW_PR_CREATION and not ACTION_PAT_FOR_PR_AND_PUSH: 
+          if ALLOW_PR_CREATION and not ACTION_PAT: # Check renamed variable
               print("Error: ALLOW_PR_CREATION is true, but ACTION_PAT (for PR creation & push) is not set. PR creation will fail.")
               sys.exit(1) 
           if not REPO_NWO: 
@@ -201,6 +201,7 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
+              # ... (content as before, ensure it's robust)
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
@@ -208,41 +209,29 @@ jobs:
                   return False
               try:
                   print("  AI Response to parse (first 500 chars): " + ai_response_text[:500])
-                  
-                  # Use regex to find all FILENAME: ... ```...``` blocks
-                  # This is more robust than simple splitting if there's preamble.
-                  # Pattern: FILENAME: (capture_filename_line_content) \n ``` (optional_lang) \n (capture_code_content) ```
                   pattern = re.compile(r"FILENAME:\s*(.*?)\n```(?:[a-zA-Z0-9_.-]*)?\n(.*?)\n```", re.DOTALL)
                   matches = pattern.findall(ai_response_text)
-
                   if not matches:
                       print("  No valid FILENAME: ... ```...``` blocks found in AI response.")
                       return False
-
                   for match in matches:
                       file_path_to_change = match[0].strip()
-                      actual_code = match[1].strip() # Content between ```
-
+                      actual_code = match[1].strip() 
                       if not file_path_to_change:
                           print("  Skipping block, filename is empty after regex match.")
                           continue
-                      
-                      # Ensure directories exist before writing file
                       dir_name = os.path.dirname(file_path_to_change)
                       if dir_name: 
                           print(f"  Ensuring directory exists: {dir_name}")
                           os.makedirs(dir_name, exist_ok=True)
-                          
                       print(f"  Attempting to write to file: {file_path_to_change}")
                       with open(file_path_to_change, "w", encoding='utf-8') as f: 
-                          f.write(actual_code + "\n") # Ensure a newline at the end
+                          f.write(actual_code + "\n") 
                       print(f"  Successfully applied changes to: {file_path_to_change}")
                       applied_changes = True
-              
               except Exception as e:
                   print(f"Error during parsing or applying changes: {e}")
                   return False
-              
               if not applied_changes:
                   print("No specific file changes were parsed and applied from AI response.")
               return applied_changes
@@ -251,15 +240,15 @@ jobs:
               try:
                   env_for_subprocess = os.environ.copy()
                   if custom_env:
-                      # Unset keys that might interfere if they are in custom_env
-                      # This is especially important for gh auth login
-                      if 'GH_TOKEN' in custom_env and 'GH_TOKEN' in env_for_subprocess:
-                          del env_for_subprocess['GH_TOKEN']
-                      if 'GITHUB_TOKEN' in custom_env and 'GITHUB_TOKEN' in env_for_subprocess:
-                          del env_for_subprocess['GITHUB_TOKEN']
-                      env_for_subprocess.update(custom_env)
+                      for key, value in custom_env.items():
+                          env_for_subprocess[key] = value 
                   
                   print(f"Running command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
+                  if 'GITHUB_TOKEN' in env_for_subprocess: # Log if GITHUB_TOKEN is being used for the subprocess
+                      token_to_log = env_for_subprocess['GITHUB_TOKEN']
+                      print(f"  (Using GITHUB_TOKEN: ...{token_to_log[-4:] if token_to_log and len(token_to_log) > 4 else '****'})")
+
+
                   result = subprocess.run(command_list, check=not ignore_error, capture_output=True, text=True, cwd=work_dir, env=env_for_subprocess)
                   stdout_clean = result.stdout.strip()
                   stderr_clean = result.stderr.strip()
@@ -282,31 +271,29 @@ jobs:
               print(f"Target branch for PRs: {TARGET_BRANCH}") 
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
 
-              # --- GitHub CLI Authentication with PAT ---
-              gh_auth_success = False
-              if ACTION_PAT_FOR_PR_AND_PUSH:
-                  print("Attempting to authenticate GitHub CLI with ACTION_PAT...")
-                  auth_env = os.environ.copy()
-                  auth_env.pop('GH_TOKEN', None) # Ensure default token doesn't interfere
-                  auth_env.pop('GITHUB_TOKEN', None)
+              pat_env_for_gh_git = None # Environment to pass to gh/git commands if PAT is used
+              gh_auth_with_pat_successful = False
+
+              if ACTION_PAT: # Use the renamed variable
+                  pat_env_for_gh_git = os.environ.copy()
+                  pat_env_for_gh_git["GITHUB_TOKEN"] = ACTION_PAT # Set GITHUB_TOKEN to the PAT
+                  pat_env_for_gh_git.pop('GH_TOKEN', None) # Remove default GH_TOKEN to avoid gh confusion
                   
+                  print("Attempting to authenticate GitHub CLI with ACTION_PAT...")
                   login_command = ["gh", "auth", "login", "--with-token", "--hostname", "github.com"]
                   try:
-                      process = subprocess.run(login_command, input=ACTION_PAT_FOR_PR_AND_PUSH, text=True, check=True, capture_output=True, env=auth_env)
+                      # Pass the PAT via stdin, and use the cleaned environment
+                      process = subprocess.run(login_command, input=ACTION_PAT, text=True, check=True, capture_output=True, env=pat_env_for_gh_git)
                       print("GitHub CLI authenticated successfully with ACTION_PAT.")
                       
-                      # Configure git to use gh as a credential helper
-                      # This helps 'git push' use the PAT authentication established by 'gh auth login'
                       setup_git_command = ["gh", "auth", "setup-git"]
-                      process_setup_git = subprocess.run(setup_git_command, check=True, capture_output=True, text=True, env=auth_env) 
-                      print("Git configured to use gh as credential helper.")
+                      process_setup_git = subprocess.run(setup_git_command, check=True, capture_output=True, text=True, env=pat_env_for_gh_git) 
+                      print("Git configured to use gh as credential helper (should use PAT).")
                       if process_setup_git.stderr.strip(): print(f"STDERR from gh auth setup-git: {process_setup_git.stderr.strip()}")
-                      gh_auth_success = True
+                      gh_auth_with_pat_successful = True
                   except subprocess.CalledProcessError as e:
                       print(f"Failed to authenticate GitHub CLI or setup git with ACTION_PAT.")
                       print(f"STDERR: {e.stderr.strip()}")
-                      if "GH_TOKEN" in e.stderr or "GITHUB_TOKEN" in e.stderr:
-                          print("Hint: gh CLI might still be picking up GH_TOKEN/GITHUB_TOKEN. The attempt to unset them for the subprocess might need review.")
                       if ALLOW_PR_CREATION: 
                           print("Exiting due to auth failure with PAT when PR creation is enabled.")
                           sys.exit(1)
@@ -314,8 +301,7 @@ jobs:
                   print("Error: ALLOW_PR_CREATION is true, but ACTION_PAT is not set. PR creation will likely fail.")
                   sys.exit(1)
               else: 
-                  print("ACTION_PAT not set or PR creation disabled. gh CLI will use default GITHUB_TOKEN or existing auth.")
-              # --- End GitHub CLI Authentication ---
+                  print("ACTION_PAT not set or PR creation disabled. gh/git commands will use default GITHUB_TOKEN or existing auth.")
 
 
               issues = get_issues_to_process()
@@ -334,18 +320,20 @@ jobs:
                   print(f"\nProcessing Issue #{issue_obj.number}: {issue_obj.title}")
                   branch_name = f"ai-fix/issue-{issue_obj.number}"
                   
+                  current_env_for_git = pat_env_for_gh_git if ACTION_PAT else None
+
                   print(f"Preparing TARGET_BRANCH ('{TARGET_BRANCH}')...")
-                  run_git_command(["git", "fetch", "origin", TARGET_BRANCH])
-                  run_git_command(["git", "checkout", TARGET_BRANCH])
-                  run_git_command(["git", "reset", "--hard", f"origin/{TARGET_BRANCH}"]) 
+                  run_git_command(["git", "fetch", "origin", TARGET_BRANCH], custom_env=current_env_for_git)
+                  run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git)
+                  run_git_command(["git", "reset", "--hard", f"origin/{TARGET_BRANCH}"], custom_env=current_env_for_git) 
                   
                   print(f"Attempting to delete pre-existing local branch '{branch_name}' if any...")
-                  run_git_command(["git", "branch", "-D", branch_name], ignore_error=True) 
+                  run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git) 
                   
                   print(f"Creating new local branch '{branch_name}' from '{TARGET_BRANCH}'...")
-                  if not run_git_command(["git", "checkout", "-b", branch_name, TARGET_BRANCH]): 
+                  if not run_git_command(["git", "checkout", "-b", branch_name, TARGET_BRANCH], custom_env=current_env_for_git): 
                       print(f"Failed to create or checkout branch {branch_name}. Skipping issue.")
-                      run_git_command(["git", "checkout", original_branch_or_commit]) 
+                      run_git_command(["git", "checkout", original_branch_or_commit], custom_env=current_env_for_git) 
                       continue 
 
                   prompt = (
@@ -375,29 +363,28 @@ jobs:
                           git_status_output = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
                           if not git_status_output: 
                               print(f"No actual file changes detected by git status after AI processing for issue #{issue_obj.number}. Skipping commit and PR.")
-                              run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                              run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git) 
+                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git)
                               continue
 
                           if not run_git_command(["git", "add", "."]):
                               print(f"Failed to git add changes for issue #{issue_obj.number}. Cleaning up branch.")
-                              run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True) 
+                              run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git) 
+                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git) 
                               continue
 
                           commit_message = f"AI fix for issue #{issue_obj.number}: {issue_obj.title}"
                           if not run_git_command(["git", "commit", "-m", commit_message]):
                               print(f"Failed to git commit changes for issue #{issue_obj.number}. Cleaning up branch.")
-                              run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                              run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git) 
+                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git)
                               continue
                           
-                          run_git_command(["git", "push", "origin", "--delete", branch_name], ignore_error=True)
+                          run_git_command(["git", "push", "origin", "--delete", branch_name], ignore_error=True, custom_env=current_env_for_git)
                           
-                          # git push should now use the PAT via gh auth setup-git
-                          if not run_git_command(["git", "push", "-u", "origin", branch_name]): 
+                          if not run_git_command(["git", "push", "-u", "origin", branch_name], custom_env=current_env_for_git): 
                               print(f"Failed to git push branch {branch_name} for issue #{issue_obj.number}.")
-                              run_git_command(["git", "checkout", TARGET_BRANCH])
+                              run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git)
                               continue
                               
                           if ALLOW_PR_CREATION:
@@ -418,20 +405,11 @@ jobs:
                                   "--body", pr_body
                               ]
                               
-                              # gh CLI should use the token from 'gh auth login'
-                              # No need to pass custom_env with GITHUB_TOKEN if gh auth login + setup-git worked.
-                              pr_creation_env = os.environ.copy()
-                              if ACTION_PAT_FOR_PR_AND_PUSH and gh_auth_success: # Ensure gh uses the PAT if login was successful
-                                  # gh should pick up auth from login, but being explicit with GITHUB_TOKEN for gh can be a fallback
-                                  pr_creation_env["GITHUB_TOKEN"] = ACTION_PAT_FOR_PR_AND_PUSH
-                              elif 'GH_TOKEN' in pr_creation_env: # If PAT login failed, ensure default token is not used if PAT was expected
-                                  if ACTION_PAT_FOR_PR_AND_PUSH and not gh_auth_success:
-                                      print("Warning: gh auth with PAT failed, PR creation might use default token and fail.")
-                                  # If no PAT was ever intended, default GH_TOKEN is fine here.
-                                  
                               try:
                                   print(f"Creating PR for branch {branch_name} against {TARGET_BRANCH}...")
-                                  pr_result = subprocess.run(pr_command, check=True, capture_output=True, text=True, env=pr_creation_env)
+                                  # gh CLI should use the token from 'gh auth login' + 'gh auth setup-git'
+                                  # Pass pat_env to ensure GITHUB_TOKEN is set to PAT for gh
+                                  pr_result = subprocess.run(pr_command, check=True, capture_output=True, text=True, env=pat_env_for_gh_git if ACTION_PAT else None)
                                   pr_url = pr_result.stdout.strip()
                                   print(f"Successfully created PR for issue #{issue_obj.number}: {pr_url}")
                                   
@@ -446,21 +424,21 @@ jobs:
                                       print(f"Failed to comment on issue #{issue_obj.number}: {e_comment}")
 
                               except subprocess.CalledProcessError as e:
-                                  print(f"Failed to create PR for issue #{issue_obj.number}: {e.stderr.strip()}")
+                                  print(f"Failed to create PR for issue #{issue_obj.number}. STDERR: {e.stderr.strip()}")
                           else:
                               print(f"PR creation is disabled. Branch {branch_name} pushed for issue #{issue_obj.number}. Manual PR needed.")
                       else: 
                           print(f"No changes applied or error during application for issue #{issue_obj.number}.")
-                          run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                          run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                          run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git) 
+                          run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git)
                   elif ai_response and "NO_CHANGES_NEEDED" in ai_response:
                       print(f"AI indicated no changes needed for issue #{issue_obj.number}.")
-                      run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                      run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                      run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git) 
+                      run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git)
                   else: 
                       print(f"No response or error from AI for issue #{issue_obj.number}.")
-                      run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                      run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                      run_git_command(["git", "checkout", TARGET_BRANCH], custom_env=current_env_for_git) 
+                      run_git_command(["git", "branch", "-D", branch_name], ignore_error=True, custom_env=current_env_for_git)
                   
                   print(f"Finished processing issue #{issue_obj.number}.")
                   
@@ -469,14 +447,12 @@ jobs:
                       time.sleep(60)
               
               print(f"Returning to original branch/commit: {original_branch_or_commit}")
-              run_git_command(["git", "checkout", original_branch_or_commit], ignore_error=True)
+              run_git_command(["git", "checkout", original_branch_or_commit], ignore_error=True, custom_env=pat_env_for_gh_git if ACTION_PAT else None)
               
-              if ACTION_PAT_FOR_PR_AND_PUSH and gh_auth_success: # Logout only if login was successful
+              if ACTION_PAT and gh_auth_with_pat_successful: # Logout only if login was successful
                   print("Logging out GitHub CLI...")
-                  auth_env_logout = os.environ.copy() # Use a clean env for logout too if needed
-                  auth_env_logout.pop('GH_TOKEN', None)
-                  auth_env_logout.pop('GITHUB_TOKEN', None)
-                  run_git_command(["gh", "auth", "logout", "--hostname", "github.com"], ignore_error=True, custom_env=auth_env_logout)
+                  # For logout, ensure it uses the same auth context if possible, or just runs
+                  run_git_command(["gh", "auth", "logout", "--hostname", "github.com"], ignore_error=True, custom_env=pat_env_for_gh_git)
               print("AI Issue Resolver run finished.")
 
           if __name__ == "__main__":
