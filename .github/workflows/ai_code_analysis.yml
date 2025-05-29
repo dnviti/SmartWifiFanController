@@ -39,15 +39,18 @@ jobs:
           echo "Determining files to analyze..."
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             MERGE_BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
-            FILES=$(git diff --name-only $MERGE_BASE HEAD | grep -E '\.(cpp|h)$' | tr '\n' ' ')
+            FILES=$(git diff --name-only $MERGE_BASE HEAD | grep -E '\.(cpp|h|c|hpp|cc|hh|cxx|hxx)$' | tr '\n' ' ')
           else # For workflow_dispatch or other events, analyze all relevant files
-            FILES=$(find . -type f \( -name "*.cpp" -o -name "*.h" \) -not -path "./.git/*" -not -path "./build/*" | tr '\n' ' ')
+            # This command for finding all files will be executed by the Python script itself
+            # if FILES_TO_ANALYZE is set to "*"
+            echo "Triggered by workflow_dispatch or other event. Python script will handle file discovery if FILES_TO_ANALYZE='*'."
+            FILES="*" # Signal to Python script to find all files
           fi
           if [ -z "$FILES" ]; then
-            echo "No relevant files found to analyze."
+            echo "No relevant files found by git diff or FILES_TO_ANALYZE not set to '*' for full scan."
             echo "files_to_analyze=''" >> $GITHUB_OUTPUT
           else
-            echo "Files to analyze: $FILES"
+            echo "Files to analyze (or '*' for full scan): $FILES"
             echo "files_to_analyze=$FILES" >> $GITHUB_OUTPUT
           fi
         shell: bash
@@ -58,8 +61,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
           REPO_NAME: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          # You can set a default model, or allow override via secrets/env vars
           OPENAI_MODEL_NAME_OVERRIDE: ${{ secrets.OPENAI_MODEL_NAME_OVERRIDE }}
+          FILES_TO_ANALYZE: "${{ steps.changed_files.outputs.files_to_analyze }}" # Pass the determined files or "*"
         run: |
           import os
           import time
@@ -72,7 +75,11 @@ jobs:
           MAX_RETRIES = 5
           INITIAL_BACKOFF = 5  # Increased initial backoff
           INTER_FILE_DELAY = 3 # Increased delay between files
+          # Default to gpt-4o-mini, can be overridden by env var OPENAI_MODEL_NAME_OVERRIDE
           OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', 'gpt-4o-mini')
+          RELEVANT_EXTENSIONS = ('.cpp', '.h', '.c', '.hpp', '.cc', '.hh', '.cxx', '.hxx') # Define relevant file extensions
+          EXCLUDE_DIRS = ['.git', '.github', 'build', 'dist', 'venv', '.venv', 'node_modules', '__pycache__', 'docs/build'] # Directories to exclude
+          EXCLUDE_FILES = ['LICENSE', 'LICENSE.md', 'CONTRIBUTING.md'] # Specific files to exclude by name
 
           OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
           if not OPENAI_API_KEY:
@@ -103,7 +110,7 @@ jobs:
                   "- \"title\": A concise title for a GitHub issue (max 80 characters).\n"
                   "- \"description\": A detailed Markdown-formatted description of the issue. Explain the problem or "
                   "suggestion, why it's relevant, and if possible, suggest a fix or implementation idea. "
-                  "Reference the file path '{file_path}' in your description.\n"
+                  f"Reference the file path '{file_path}' in your description.\n"
                   "- \"category\": Classify the issue. Choose ONLY from: \"bug\", \"enhancement\", \"refactor\", \"documentation\", \"feature_suggestion\".\n"
                   "Return a JSON array containing these issue objects. If no issues are found for this specific file, return an empty JSON array []."
               )
@@ -112,7 +119,7 @@ jobs:
                   "Focus only on issues present in or directly suggested by THIS code. "
                   "Remember to provide your response strictly as a JSON array of issue objects, or an empty array if no issues are found.\n\n"
                   f"File Path: {file_path}\n"
-                  "```cpp\n"
+                  "```cpp\n" # Assuming C++ for now, could be made dynamic if needed
                   f"{file_content}\n"
                   "```\n"
                   "JSON Array of Issues:"
@@ -126,24 +133,12 @@ jobs:
                               {"role": "system", "content": system_message},
                               {"role": "user", "content": user_prompt}
                           ],
-                          response_format={"type": "json_object"}, # Request JSON output if model supports it
-                          # temperature parameter removed as per previous error with gpt-4o-mini
+                          response_format={"type": "json_object"}, 
                       )
                       response_content = response.choices[0].message.content.strip()
                       
-                      # The AI might wrap the JSON array in a larger JSON object if response_format is used.
-                      # Or it might return a string that needs to be parsed.
-                      # Attempt to parse the response as JSON.
                       try:
-                          # Check if the response is already a JSON object containing the array
-                          # (common when using response_format={"type": "json_object"})
                           parsed_response = json.loads(response_content)
-                          # Look for a key that might contain the array, or assume the root is the array
-                          # This part might need adjustment based on how your specific model version
-                          # structures its JSON output when `response_format={"type": "json_object"}` is used.
-                          # Common patterns: "issues", "suggestions", or the root itself.
-                          # For now, let's assume the AI is instructed to return an array directly,
-                          # or it's under a common key like "issues".
                           if isinstance(parsed_response, list):
                               issues = parsed_response
                           elif isinstance(parsed_response, dict) and "issues" in parsed_response and isinstance(parsed_response["issues"], list):
@@ -151,36 +146,29 @@ jobs:
                           elif isinstance(parsed_response, dict) and "suggestions" in parsed_response and isinstance(parsed_response["suggestions"], list):
                               issues = parsed_response["suggestions"]
                           else:
-                              # If the response is a dict but doesn't have an obvious key for the list,
-                              # and the prompt specifically asked for an array, this is unexpected.
-                              # However, if the prompt was to fill a schema, the root dict might be the "object"
-                              # and we need to find the array within it.
-                              # For this prompt, we expect a direct array or an object with a known key.
-                              # Falling back to trying to parse the raw string if the structure isn't immediately obvious.
                               print(f"AI returned a JSON object, but expected an array or a dict with a known key for issues. Content: {response_content[:200]}...")
-                              # This fallback might be risky if the AI doesn't strictly follow the "array" instruction.
-                              # For now, we'll assume the direct array or a simple dict wrapper.
-                              # If the AI is well-behaved with the prompt, this part might not be hit often.
-                              issues = json.loads(response_content) if isinstance(json.loads(response_content), list) else []
-
+                              # Attempt to load as list directly if it's a string representation of a list
+                              try:
+                                  potential_list = json.loads(response_content)
+                                  if isinstance(potential_list, list):
+                                      issues = potential_list
+                                  else:
+                                      issues = [] # Fallback to empty if not a list
+                              except json.JSONDecodeError:
+                                  issues = [] # Fallback if direct parsing as list also fails
 
                           print(f"Successfully received and parsed AI analysis for {file_path} on attempt {retries + 1}. Found {len(issues)} potential issues.")
                           return issues
                       except json.JSONDecodeError:
                           print(f"Warning: AI response for {file_path} was not valid JSON on attempt {retries + 1}. Response: {response_content[:500]}...")
-                          # If JSON parsing fails, we can't proceed with creating structured issues.
-                          # We could try to extract text, but it defeats the purpose of structured output.
-                          # For now, we'll retry, hoping for a valid JSON next time.
-                          # If all retries fail, this will eventually fall through to the APIError handling or general Exception.
-                          # Consider returning a special marker or logging this as a failure for this file.
-                          if retries >= MAX_RETRIES -1: # Last attempt failed parsing
-                             return [{"title": f"AI Analysis Error: Non-JSON Response for {file_path}", 
+                          if retries >= MAX_RETRIES -1:
+                            return [{"title": f"AI Analysis Error: Non-JSON Response for {file_path}", 
                                       "description": f"The AI's response for `{file_path}` was not valid JSON and could not be parsed after {MAX_RETRIES} attempts.\n\nRaw response snippet:\n```\n{response_content[:1000]}\n```",
-                                      "category": "bug", "file_path": file_path}] # Create an issue about the parsing failure
+                                      "category": "bug", "file_path": file_path}]
                   
                   except openai.APIError as e:
                       error_str = str(e).lower()
-                      if e.status_code == 400 and e.body and 'param' in e.body and e.body['param'] == 'temperature' and 'unsupported_value' in e.body.get('code',''):
+                      if e.status_code == 400 and hasattr(e, 'body') and e.body and 'param' in e.body and e.body.get('param') == 'temperature' and 'unsupported_value' in e.body.get('code',''):
                           print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' does not support the specified temperature or temperature setting. Error: {e.body.get('message')}")
                           return [{"title": f"AI Model Config Error for {file_path}", "description": f"Analysis skipped for `{file_path}`: Model '{OPENAI_MODEL_NAME}' does not support current temperature settings. Error: {e.body.get('message')}", "category": "bug", "file_path": file_path}]
 
@@ -188,7 +176,7 @@ jobs:
                           retries += 1
                           if retries >= MAX_RETRIES:
                               print(f"Max retries reached for {file_path}. Error: {e}")
-                              return None # Indicate failure after retries
+                              return None
                           
                           retry_after_header = e.headers.get("retry-after")
                           wait_time = backoff_time
@@ -203,7 +191,7 @@ jobs:
                               print(f"OpenAI API rate limit for {file_path}. Retrying in {wait_time:.2f}s. Error: {e}")
                               backoff_time *= 2
                           time.sleep(wait_time)
-                      elif e.status_code >= 500: # Server-side errors
+                      elif e.status_code >= 500:
                           retries += 1
                           if retries >= MAX_RETRIES: return None
                           wait_time = backoff_time + random.uniform(0, 1.5)
@@ -212,15 +200,15 @@ jobs:
                           backoff_time *= 1.5
                       else:
                           print(f"Unexpected OpenAI API error for {file_path}: {e}")
-                          if e.body: print(f"Error details: {e.body}")
-                          return None # Non-retryable or unknown API error
+                          if hasattr(e, 'body') and e.body: print(f"Error details: {e.body}")
+                          return None
                   except Exception as e:
                       print(f"General error calling OpenAI for {file_path}: {e}")
                       retries += 1
                       if retries >= MAX_RETRIES: return None
                       time.sleep(backoff_time + random.uniform(0,1.5))
                       backoff_time *= 2
-              return None # All retries failed
+              return None
 
           def create_github_issue(title, body, labels=None):
               github_token = os.getenv('GITHUB_TOKEN')
@@ -240,6 +228,7 @@ jobs:
               if labels:
                   data["labels"] = labels
               
+              response = None 
               try:
                   response = requests.post(api_url, json=data, headers=headers)
                   response.raise_for_status() 
@@ -254,79 +243,118 @@ jobs:
                   print(f"An unexpected error occurred during GitHub issue creation: {e}")
                   return False
 
-          files_to_analyze_str = os.getenv('FILES_TO_ANALYZE', "${{ steps.changed_files.outputs.files_to_analyze }}")
-          
-          if not files_to_analyze_str or not files_to_analyze_str.strip():
-              print("No files to analyze.")
-              exit(0)
-          
-          files_to_analyze = [f.strip() for f in files_to_analyze_str.strip().split(' ') if f.strip()]
-          
-          if not files_to_analyze:
-              print("No valid file paths to analyze.")
-              exit(0)
+          def get_all_repo_files(root_dir=".", extensions=RELEVANT_EXTENSIONS, exclude_dirs=EXCLUDE_DIRS, exclude_files=EXCLUDE_FILES):
+              """
+              Walks the repository to find all files with specified extensions, excluding certain directories and files.
+              """
+              repo_files = []
+              abs_exclude_dirs = [os.path.abspath(os.path.join(root_dir, d)) for d in exclude_dirs]
+
+              for dirpath, dirnames, filenames in os.walk(root_dir):
+                  dirnames[:] = [d for d in dirnames if os.path.abspath(os.path.join(dirpath, d)) not in abs_exclude_dirs and not d.startswith('.')]
+                  for filename in filenames:
+                      if filename.lower().endswith(extensions) and filename not in exclude_files:
+                          full_path = os.path.join(dirpath, filename)
+                          repo_files.append(os.path.normpath(full_path))
+              return repo_files
+
+          def main():
+              files_to_analyze_input = os.getenv('FILES_TO_ANALYZE')
+              files_to_analyze = []
+
+              if files_to_analyze_input == "*":
+                  print("FILES_TO_ANALYZE is '*', scanning repository for relevant files...")
+                  current_directory = os.getcwd() 
+                  print(f"Scanning from directory: {current_directory}")
+                  files_to_analyze = get_all_repo_files(root_dir=current_directory)
+                  if not files_to_analyze:
+                      print(f"No files found with extensions {RELEVANT_EXTENSIONS} in the repository (excluding specified directories/files).")
+                      exit(0)
+              elif files_to_analyze_input:
+                  files_to_analyze = [f.strip() for f in files_to_analyze_input.strip().split(' ') if f.strip()]
+              else:
+                  print("FILES_TO_ANALYZE environment variable not set or empty, and not '*'. Assuming no files to analyze for this run.")
+                  # If running in a PR context without changed files, this might be expected.
+                  # If running manually and expecting a full scan, ensure FILES_TO_ANALYZE is set to "*".
+                  exit(0) 
               
-          print(f"Files queued for analysis: {files_to_analyze}")
-          total_issues_created = 0
-
-          for i, file_path in enumerate(files_to_analyze):
-              print(f"\nProcessing file {i+1}/{len(files_to_analyze)}: {file_path}")
-              try:
-                  with open(file_path, 'r', encoding='utf-8') as f:
-                      file_content = f.read()
+              if not files_to_analyze:
+                  print("No valid file paths to analyze.")
+                  exit(0)
                   
-                  if not file_content.strip():
-                      print(f"Skipping empty file: {file_path}")
-                      continue
+              print(f"Files queued for analysis ({len(files_to_analyze)}): {files_to_analyze}")
+              total_issues_created = 0
 
-                  # Get a list of issue objects from the AI
-                  identified_issues = call_openai_for_issues(file_path, file_content)
+              for i, file_path in enumerate(files_to_analyze):
+                  print(f"\nProcessing file {i+1}/{len(files_to_analyze)}: {file_path}")
+                  try:
+                      if not os.path.exists(file_path):
+                          print(f"Error: File not found - {file_path}. Skipping.")
+                          continue
+
+                      with open(file_path, 'r', encoding='utf-8') as f:
+                          file_content = f.read()
+                      
+                      if not file_content.strip():
+                          print(f"Skipping empty file: {file_path}")
+                          continue
+
+                      MAX_FILE_SIZE_CHARS = 100 * 1024 
+                      if len(file_content) > MAX_FILE_SIZE_CHARS:
+                          print(f"Warning: File {file_path} is very large ({len(file_content)} chars). Truncating to {MAX_FILE_SIZE_CHARS} characters for AI analysis to manage token limits.")
+                          file_content = file_content[:MAX_FILE_SIZE_CHARS]
+
+                      identified_issues = call_openai_for_issues(file_path, file_content)
+                      
+                      if identified_issues is None:
+                          print(f"AI analysis failed for {file_path} after retries.")
+                      elif not identified_issues:
+                          print(f"AI found no specific issues to report for {file_path}.")
+                      else:
+                          print(f"AI identified {len(identified_issues)} potential issues for {file_path}.")
+                          for issue_data in identified_issues:
+                              if not isinstance(issue_data, dict) or not all(k in issue_data for k in ["title", "description", "category"]):
+                                  print(f"Warning: Invalid issue format received from AI for {file_path}. Skipping: {issue_data}")
+                                  continue
+
+                              path_for_filename = issue_data.get('file_path', file_path) # AI might include file_path in its response
+                              filename_only = os.path.basename(path_for_filename)
+                              title = f"AI Suggestion for `{filename_only}`: {issue_data['title']}"
+                              
+                              pr_number_env = os.getenv('PR_NUMBER')
+                              pr_context = f"\n\n_Context: Analysis triggered by PR #{pr_number_env}_" if pr_number_env else ""
+                              body = f"**File:** `{file_path}`\n\n{issue_data['description']}{pr_context}"
+                              
+                              category = issue_data['category'].lower()
+                              labels = ["AI Suggested"]
+                              if category == "bug":
+                                  labels.append("bug")
+                              elif category == "enhancement":
+                                  labels.append("enhancement")
+                              elif category == "refactor":
+                                  labels.append("refactor")
+                              elif category == "documentation":
+                                  labels.append("documentation")
+                              elif category == "feature_suggestion":
+                                  labels.append("feature request")
+                              else:
+                                  labels.append("ai-misc")
+
+                              if create_github_issue(title, body, labels):
+                                  total_issues_created += 1
+                              time.sleep(1) 
+
+                  except FileNotFoundError:
+                      print(f"Error: File not found - {file_path}")
+                  except Exception as e:
+                      print(f"Error processing file {file_path}: {e}")
                   
-                  if identified_issues is None:
-                      print(f"AI analysis failed for {file_path} after retries.")
-                  elif not identified_issues: # Empty list means AI found no issues
-                      print(f"AI found no specific issues to report for {file_path}.")
-                  else:
-                      print(f"AI identified {len(identified_issues)} potential issues for {file_path}.")
-                      for issue_data in identified_issues:
-                          if not isinstance(issue_data, dict) or not all(k in issue_data for k in ["title", "description", "category"]):
-                              print(f"Warning: Invalid issue format received from AI for {file_path}. Skipping: {issue_data}")
-                              continue
-
-                          title = f"AI Suggestion for `{issue_data.get('file_path', file_path)}`: {issue_data['title']}"
-                          # Add PR context to description if available
-                          pr_number_env = os.getenv('PR_NUMBER')
-                          pr_context = f"\n\n_Context: Analysis triggered by PR #{pr_number_env}_" if pr_number_env else ""
-                          body = f"{issue_data['description']}{pr_context}"
-                          
-                          category = issue_data['category'].lower()
-                          labels = ["AI Suggested"]
-                          if category == "bug":
-                              labels.append("bug")
-                          elif category == "enhancement":
-                              labels.append("enhancement")
-                          elif category == "refactor":
-                              labels.append("refactor")
-                          elif category == "documentation":
-                              labels.append("documentation")
-                          elif category == "feature_suggestion":
-                              labels.append("feature request")
-                          else:
-                              labels.append("ai-misc") # Default for unknown categories
-
-                          if create_github_issue(title, body, labels):
-                              total_issues_created += 1
-                          time.sleep(1) # Small delay between creating issues to be kind to GitHub API
-
-              except FileNotFoundError:
-                  print(f"Error: File not found - {file_path}")
-              except Exception as e:
-                  print(f"Error processing file {file_path}: {e}")
+                  if len(files_to_analyze) > 1 and i < len(files_to_analyze) - 1:
+                      print(f"Waiting for {INTER_FILE_DELAY} seconds before processing the next file...")
+                      time.sleep(INTER_FILE_DELAY)
               
-              if len(files_to_analyze) > 1 and i < len(files_to_analyze) - 1:
-                  print(f"Waiting for {INTER_FILE_DELAY} seconds before processing the next file...")
-                  time.sleep(INTER_FILE_DELAY)
-          
-          print(f"\nAI code analysis (OpenAI) process complete. Total GitHub issues created: {total_issues_created}")
+              print(f"\nAI code analysis (OpenAI) process complete. Total GitHub issues created: {total_issues_created}")
 
+          if __name__ == "__main__":
+              main()
         shell: python
