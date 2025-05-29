@@ -18,14 +18,14 @@ on:
         default: ''
         type: string
       max_issues_to_process:
-        description: 'Max issues to process. Default is 1. Leave empty to process all matching issues.' 
+        description: 'Max issues to process. Leave empty to process all matching issues. Default if untouched is 1.' 
         required: false
-        default: '1' # Default to '1' for safety, script will interpret explicitly empty string as "all"
+        default: '' # Changed: Default to empty string. Script will handle this as "all".
         type: string 
       allow_pr_creation:
         description: 'Set to "true" to allow the script to create Pull Requests'
         required: true
-        default: 'true' # Updated default to true
+        default: 'true' 
 
 permissions:
   contents: write      
@@ -97,16 +97,19 @@ jobs:
           ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '').lower() 
           
           # Handle max_issues_to_process input
-          MAX_ISSUES_INPUT_STR = os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', '1')
-          if not MAX_ISSUES_INPUT_STR: # If empty string (user cleared the input), process all
+          # The workflow input default is now '', so if user leaves it blank, INPUT_MAX_ISSUES_TO_PROCESS will be ''.
+          # os.getenv will return this empty string.
+          MAX_ISSUES_INPUT_STR = os.getenv('INPUT_MAX_ISSUES_TO_PROCESS') # No default for getenv here, rely on workflow input
+          
+          if MAX_ISSUES_INPUT_STR == "" or MAX_ISSUES_INPUT_STR is None: # Explicitly check for empty string or None
               MAX_ISSUES_TO_PROCESS = sys.maxsize 
-              print("Max issues to process: All matching issues (input was empty)")
+              print("Max issues to process: All matching issues (input was empty or not set)")
           else:
               try:
                   MAX_ISSUES_TO_PROCESS = int(MAX_ISSUES_INPUT_STR)
                   if MAX_ISSUES_TO_PROCESS <= 0: 
                       MAX_ISSUES_TO_PROCESS = sys.maxsize
-                      print("Max issues to process: All matching issues (input was non-positive or invalid, defaulting to all)")
+                      print("Max issues to process: All matching issues (input was non-positive, defaulting to all)")
                   else:
                       print(f"Max issues to process: {MAX_ISSUES_TO_PROCESS}")
               except ValueError:
@@ -212,6 +215,7 @@ jobs:
               return issues_to_process
 
           def get_entire_codebase_context():
+              # ... (content as before)
               print("Attempting to fetch entire codebase context from specified directories...")
               full_context = "Full Codebase Context:\n"
               current_chars = 0
@@ -243,6 +247,7 @@ jobs:
               return full_context
 
           def call_gemini_api(prompt_text):
+              # ... (content as before)
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -265,6 +270,7 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
+              # ... (content as before)
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
@@ -305,6 +311,7 @@ jobs:
               return applied_changes
 
           def run_git_command(command_list, ignore_error=False, work_dir=None):
+              # ... (content as before)
               try:
                   print(f"Running command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
                   github_token_env = os.getenv('GITHUB_TOKEN', 'Not Set')
