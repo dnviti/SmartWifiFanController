@@ -18,14 +18,14 @@ on:
         default: ''
         type: string
       max_issues_to_process:
-        description: 'Max issues to process. Default is 1. Leave empty to process all matching issues.' # Updated description
+        description: 'Max issues to process. Default is 1. Leave empty to process all matching issues.' 
         required: false
-        default: '1' # Default to '1' for safety, script will interpret empty as "all"
+        default: '1' # Default to '1' for safety, script will interpret explicitly empty string as "all"
         type: string 
       allow_pr_creation:
         description: 'Set to "true" to allow the script to create Pull Requests'
         required: true
-        default: 'true' 
+        default: 'true' # Updated default to true
 
 permissions:
   contents: write      
@@ -98,19 +98,19 @@ jobs:
           
           # Handle max_issues_to_process input
           MAX_ISSUES_INPUT_STR = os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', '1')
-          if not MAX_ISSUES_INPUT_STR: # If empty string, process all
-              MAX_ISSUES_TO_PROCESS = sys.maxsize # Effectively "all"
+          if not MAX_ISSUES_INPUT_STR: # If empty string (user cleared the input), process all
+              MAX_ISSUES_TO_PROCESS = sys.maxsize 
               print("Max issues to process: All matching issues (input was empty)")
           else:
               try:
                   MAX_ISSUES_TO_PROCESS = int(MAX_ISSUES_INPUT_STR)
-                  if MAX_ISSUES_TO_PROCESS <= 0: # Treat non-positive as "all" for safety/simplicity
+                  if MAX_ISSUES_TO_PROCESS <= 0: 
                       MAX_ISSUES_TO_PROCESS = sys.maxsize
                       print("Max issues to process: All matching issues (input was non-positive or invalid, defaulting to all)")
                   else:
                       print(f"Max issues to process: {MAX_ISSUES_TO_PROCESS}")
               except ValueError:
-                  MAX_ISSUES_TO_PROCESS = 1 # Default to 1 if input is not a valid number
+                  MAX_ISSUES_TO_PROCESS = 1 # Default to 1 if input is not a valid number (e.g. random string)
                   print(f"Warning: Invalid value for max_issues_to_process ('{MAX_ISSUES_INPUT_STR}'). Defaulting to 1.")
 
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
@@ -179,10 +179,8 @@ jobs:
 
                   open_issues_paginator = repo.get_issues(**query_params)
                   count = 0
-                  # Iterate through paginator. If MAX_ISSUES_TO_PROCESS is sys.maxsize, it will try to get all.
-                  # Be mindful of API rate limits for repo.get_issues() if there are many issues.
                   for issue_obj in open_issues_paginator: 
-                      if count >= MAX_ISSUES_TO_PROCESS: # Check before processing
+                      if count >= MAX_ISSUES_TO_PROCESS: 
                           break 
 
                       has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
@@ -214,7 +212,6 @@ jobs:
               return issues_to_process
 
           def get_entire_codebase_context():
-              # ... (content as before)
               print("Attempting to fetch entire codebase context from specified directories...")
               full_context = "Full Codebase Context:\n"
               current_chars = 0
@@ -246,7 +243,6 @@ jobs:
               return full_context
 
           def call_gemini_api(prompt_text):
-              # ... (content as before)
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -269,7 +265,6 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
-              # ... (content as before)
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
@@ -310,7 +305,6 @@ jobs:
               return applied_changes
 
           def run_git_command(command_list, ignore_error=False, work_dir=None):
-              # ... (content as before)
               try:
                   print(f"Running command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
                   github_token_env = os.getenv('GITHUB_TOKEN', 'Not Set')
