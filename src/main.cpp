@@ -27,6 +27,7 @@ const int PWM_FREQ = 25000;
 const int PWM_RESOLUTION_BITS = 8;
 const int AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE = 60;
 const int PULSES_PER_REVOLUTION = 2;
+const int DEFAULT_CURVE_POINT_COUNT = 5; // ADDED: Definition for default curve points
 
 // Modes & States
 volatile bool isAutoMode = true;
