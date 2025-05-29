@@ -10,26 +10,27 @@ on:
       issue_label:
         description: 'Optional: Process issues with this specific label (e.g., bug, enhancement, documentation, refactor). Leave blank for any.'
         required: false
-        default: 'bug'
+        default: ''
         type: string
-      gemini_model_override: # New input for model override
+      gemini_model_override: 
         description: 'Optional: Override the default Gemini model (e.g., gemini-1.5-pro-latest). Default is gemini-2.5-flash-preview-05-20.'
         required: false
-        default: 'gemini-2.5-flash-preview-05-20'
+        default: ''
         type: string
       max_issues_to_process:
-        description: 'Maximum number of open issues to attempt to process in this run'
+        description: 'Max issues to process. Default is 1. Leave empty to process all matching issues.' # Updated description
         required: false
-        default: '1'
+        default: '1' # Default to '1' for safety, script will interpret empty as "all"
+        type: string 
       allow_pr_creation:
         description: 'Set to "true" to allow the script to create Pull Requests'
         required: true
-        default: 'true' # Default to false for safety
+        default: 'false' 
 
 permissions:
-  contents: write      # To create branches, commit, push
-  pull-requests: write # To create pull requests
-  issues: write        # To read issues, write comments, and manage labels
+  contents: write      
+  pull-requests: write 
+  issues: write        
 
 jobs:
   resolve_issues_with_ai:
@@ -38,7 +39,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
       TARGET_BRANCH: develop 
-      GEMINI_MODEL_DEFAULT: "gemini-2.5-flash-preview-05-20" # Updated default model
+      GEMINI_MODEL_DEFAULT: "gemini-2.5-flash-preview-05-20" 
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
       GITHUB_REPOSITORY_NWO: ${{ github.repository }}
@@ -81,7 +82,6 @@ jobs:
 
           # --- Configuration ---
           GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-          # Get model from workflow input if provided, else use default from env
           GEMINI_MODEL_OVERRIDE = os.getenv('INPUT_GEMINI_MODEL_OVERRIDE', '')
           GEMINI_MODEL_DEFAULT_FROM_ENV = os.getenv('GEMINI_MODEL_DEFAULT', 'gemini-2.5-flash-preview-05-20')
           GEMINI_MODEL_NAME = GEMINI_MODEL_OVERRIDE if GEMINI_MODEL_OVERRIDE else GEMINI_MODEL_DEFAULT_FROM_ENV
@@ -95,7 +95,24 @@ jobs:
           
           ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
           ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '').lower() 
-          MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
+          
+          # Handle max_issues_to_process input
+          MAX_ISSUES_INPUT_STR = os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', '1')
+          if not MAX_ISSUES_INPUT_STR: # If empty string, process all
+              MAX_ISSUES_TO_PROCESS = sys.maxsize # Effectively "all"
+              print("Max issues to process: All matching issues (input was empty)")
+          else:
+              try:
+                  MAX_ISSUES_TO_PROCESS = int(MAX_ISSUES_INPUT_STR)
+                  if MAX_ISSUES_TO_PROCESS <= 0: # Treat non-positive as "all" for safety/simplicity
+                      MAX_ISSUES_TO_PROCESS = sys.maxsize
+                      print("Max issues to process: All matching issues (input was non-positive or invalid, defaulting to all)")
+                  else:
+                      print(f"Max issues to process: {MAX_ISSUES_TO_PROCESS}")
+              except ValueError:
+                  MAX_ISSUES_TO_PROCESS = 1 # Default to 1 if input is not a valid number
+                  print(f"Warning: Invalid value for max_issues_to_process ('{MAX_ISSUES_INPUT_STR}'). Defaulting to 1.")
+
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
 
           DIRECTORIES_TO_SCAN = ['src', 'test', 'data'] 
@@ -160,38 +177,40 @@ jobs:
                   else:
                       print("Fetching any open issues (no specific label requested).")
 
-                  open_issues = repo.get_issues(**query_params)
+                  open_issues_paginator = repo.get_issues(**query_params)
                   count = 0
-                  for issue_obj in open_issues: 
-                      if count < MAX_ISSUES_TO_PROCESS:
-                          has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
-                          if has_ai_label:
-                              print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
-                              continue 
+                  # Iterate through paginator. If MAX_ISSUES_TO_PROCESS is sys.maxsize, it will try to get all.
+                  # Be mindful of API rate limits for repo.get_issues() if there are many issues.
+                  for issue_obj in open_issues_paginator: 
+                      if count >= MAX_ISSUES_TO_PROCESS: # Check before processing
+                          break 
 
-                          branch_prefix = BRANCH_PREFIX_MAP.get(ISSUE_LABEL_INPUT, DEFAULT_BRANCH_PREFIX) if ISSUE_LABEL_INPUT else DEFAULT_BRANCH_PREFIX
-                          if not ISSUE_LABEL_INPUT:
-                              for label_obj in issue_obj.labels:
-                                  if label_obj.name.lower() in BRANCH_PREFIX_MAP:
-                                      branch_prefix = BRANCH_PREFIX_MAP[label_obj.name.lower()]
-                                      break 
+                      has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
+                      if has_ai_label:
+                          print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
+                          continue 
 
-                          branch_name = f"{branch_prefix}ai-issue-{issue_obj.number}"
-                          
-                          try:
-                              repo.get_git_ref(f"heads/{branch_name}")
-                              print(f"Remote branch {branch_name} already exists for issue #{issue_obj.number}. Skipping.")
-                              continue 
-                          except UnknownObjectException: 
-                              pass
-                          except GithubException as e: 
-                              print(f"Error checking remote branch {branch_name}: {e}. Proceeding cautiously.")
-                              pass 
-                          
-                          issues_to_process.append(issue_obj)
-                          count += 1
-                      else:
-                          break
+                      branch_prefix = BRANCH_PREFIX_MAP.get(ISSUE_LABEL_INPUT, DEFAULT_BRANCH_PREFIX) if ISSUE_LABEL_INPUT else DEFAULT_BRANCH_PREFIX
+                      if not ISSUE_LABEL_INPUT:
+                          for label_obj in issue_obj.labels:
+                              if label_obj.name.lower() in BRANCH_PREFIX_MAP:
+                                  branch_prefix = BRANCH_PREFIX_MAP[label_obj.name.lower()]
+                                  break 
+
+                      branch_name = f"{branch_prefix}ai-issue-{issue_obj.number}"
+                      
+                      try:
+                          repo.get_git_ref(f"heads/{branch_name}")
+                          print(f"Remote branch {branch_name} already exists for issue #{issue_obj.number}. Skipping.")
+                          continue 
+                      except UnknownObjectException: 
+                          pass
+                      except GithubException as e: 
+                          print(f"Error checking remote branch {branch_name}: {e}. Proceeding cautiously.")
+                          pass 
+                      
+                      issues_to_process.append(issue_obj)
+                      count += 1
               return issues_to_process
 
           def get_entire_codebase_context():
@@ -227,8 +246,8 @@ jobs:
               return full_context
 
           def call_gemini_api(prompt_text):
-              # ... (content as before, uses GEMINI_MODEL_NAME which is now configurable)
-              print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...") # Uses the determined model name
+              # ... (content as before)
+              print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
                   response = model.generate_content(
@@ -316,7 +335,7 @@ jobs:
           # --- Main Processing Logic ---
           def main():
               print(f"Starting AI Issue Resolver for repository: {REPO_NWO}")
-              print(f"Using Gemini Model: {GEMINI_MODEL_NAME}") # Log the model being used
+              print(f"Using Gemini Model: {GEMINI_MODEL_NAME}") 
               print(f"Target branch for PRs: {TARGET_BRANCH}") 
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
               print(f"Label for processed issues: {AI_PR_CREATED_LABEL}")
@@ -476,7 +495,7 @@ jobs:
                   
                   print(f"Finished processing issue #{issue_obj.number}.")
                   
-                  if MAX_ISSUES_TO_PROCESS > 1 and issues.index(issue_obj) < len(issues) -1 : 
+                  if MAX_ISSUES_TO_PROCESS != sys.maxsize and issues.index(issue_obj) < MAX_ISSUES_TO_PROCESS - 1 and issues.index(issue_obj) < len(issues) -1 : 
                       print("Waiting for 60 seconds before processing next issue to avoid rate limits...")
                       time.sleep(60)
               
@@ -496,7 +515,7 @@ jobs:
         env: 
           INPUT_ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
           INPUT_ISSUE_LABEL: ${{ github.event.inputs.issue_label }} 
-          INPUT_GEMINI_MODEL_OVERRIDE: ${{ github.event.inputs.gemini_model_override }} # Pass the new model override input
+          INPUT_GEMINI_MODEL_OVERRIDE: ${{ github.event.inputs.gemini_model_override }} 
           INPUT_MAX_ISSUES_TO_PROCESS: ${{ github.event.inputs.max_issues_to_process }}
           INPUT_ALLOW_PR_CREATION: ${{ github.event.inputs.allow_pr_creation }}
         run: python .github/scripts/ai_issue_processor.py 
