@@ -85,13 +85,22 @@ jobs:
           AI_PR_CREATED_LABEL = os.getenv('AI_PR_CREATED_LABEL', 'ai-pr-created')
           
           ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
-          ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '') # Get the label input
+          ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '').lower() # Get the label input and lowercase it
           MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
 
           DIRECTORIES_TO_SCAN = ['src', 'test', 'data'] 
           RELEVANT_EXTENSIONS = ['*.cpp', '*.h', '*.ino', '*.py', '*.js', '*.html', '*.css', '*.md', '*.yml', '*.json', '*.txt', '*.csv', '*.S']
           MAX_CONTEXT_CHARS = 2 * 1024 * 1024 
+
+          # GitFlow branch prefix mapping
+          BRANCH_PREFIX_MAP = {
+              "bug": "bugfix/",
+              "enhancement": "feature/",
+              "documentation": "docs/",
+              "refactor": "refactor/"
+          }
+          DEFAULT_BRANCH_PREFIX = "fix/" # Default for other labels or no label
 
           if not GEMINI_API_KEY:
               print("Error: GEMINI_API_KEY environment variable not set.")
@@ -119,10 +128,9 @@ jobs:
                       issue_obj = repo.get_issue(number=int(ISSUE_NUMBER_INPUT)) 
                       if issue_obj.state == 'open':
                           has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
-                          # If a specific label is requested, ensure the issue has it
-                          has_requested_label = True # Assume true if no specific label is requested
-                          if ISSUE_LABEL_INPUT:
-                              has_requested_label = any(label.name.lower() == ISSUE_LABEL_INPUT.lower() for label in issue_obj.labels)
+                          has_requested_label = True 
+                          if ISSUE_LABEL_INPUT: # Check if the specific issue has the requested label if one was provided
+                              has_requested_label = any(label.name.lower() == ISSUE_LABEL_INPUT for label in issue_obj.labels)
                           
                           if has_ai_label:
                               print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
@@ -137,10 +145,9 @@ jobs:
                   except ValueError:
                       print(f"Error: Invalid issue number provided: {ISSUE_NUMBER_INPUT}")
               else:
-                  # Construct query parameters for get_issues
                   query_params = {'state': 'open', 'sort': 'created', 'direction': 'asc'}
                   if ISSUE_LABEL_INPUT:
-                      query_params['labels'] = [ISSUE_LABEL_INPUT] # PyGithub expects a list of labels
+                      query_params['labels'] = [ISSUE_LABEL_INPUT] 
                       print(f"Fetching open issues with label: '{ISSUE_LABEL_INPUT}'")
                   else:
                       print("Fetching any open issues (no specific label requested).")
@@ -154,7 +161,17 @@ jobs:
                               print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
                               continue 
 
-                          branch_name = f"ai-fix/issue-{issue_obj.number}"
+                          branch_prefix = BRANCH_PREFIX_MAP.get(ISSUE_LABEL_INPUT, DEFAULT_BRANCH_PREFIX) if ISSUE_LABEL_INPUT else DEFAULT_BRANCH_PREFIX
+                          # If no specific label input, but issue itself has a mapped label, use that.
+                          # This part makes it more dynamic if ISSUE_LABEL_INPUT is blank.
+                          if not ISSUE_LABEL_INPUT:
+                              for label_obj in issue_obj.labels:
+                                  if label_obj.name.lower() in BRANCH_PREFIX_MAP:
+                                      branch_prefix = BRANCH_PREFIX_MAP[label_obj.name.lower()]
+                                      break # Use the first matching label for prefix
+
+                          branch_name = f"{branch_prefix}ai-issue-{issue_obj.number}"
+                          
                           try:
                               repo.get_git_ref(f"heads/{branch_name}")
                               print(f"Remote branch {branch_name} already exists for issue #{issue_obj.number}. Skipping.")
@@ -294,7 +311,6 @@ jobs:
               if ISSUE_LABEL_INPUT:
                   print(f"Filtering for issues with label: '{ISSUE_LABEL_INPUT}'")
 
-
               if ALLOW_PR_CREATION:
                   print("Note: PR creation will use the default GITHUB_TOKEN. Ensure your repository settings allow Actions to create PRs.")
 
@@ -312,7 +328,22 @@ jobs:
 
               for issue_obj in issues: 
                   print(f"\nProcessing Issue #{issue_obj.number}: {issue_obj.title}")
-                  branch_name = f"ai-fix/issue-{issue_obj.number}"
+                  
+                  # Determine branch prefix based on input label or issue's labels
+                  branch_prefix_to_use = DEFAULT_BRANCH_PREFIX
+                  current_issue_label_for_prefix = ISSUE_LABEL_INPUT # Prioritize workflow input label
+                  
+                  if not current_issue_label_for_prefix: # If no input label, check issue's own labels
+                      for label_obj in issue_obj.labels:
+                          if label_obj.name.lower() in BRANCH_PREFIX_MAP:
+                              current_issue_label_for_prefix = label_obj.name.lower()
+                              break 
+                  
+                  if current_issue_label_for_prefix: # If we have a label (either input or from issue)
+                      branch_prefix_to_use = BRANCH_PREFIX_MAP.get(current_issue_label_for_prefix, DEFAULT_BRANCH_PREFIX)
+
+                  branch_name = f"{branch_prefix_to_use}ai-issue-{issue_obj.number}"
+                  print(f"Determined branch name: {branch_name}")
                   
                   print(f"Preparing TARGET_BRANCH ('{TARGET_BRANCH}')...")
                   run_git_command(["git", "fetch", "origin", TARGET_BRANCH])
