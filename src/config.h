@@ -15,6 +15,7 @@
 #include <HTTPClient.h>   // For OTA from URL
 #include <HTTPUpdate.h>   // For OTA from URL
 #include <SPIFFS.h>       // For loading CA from SPIFFS
+#include <atomic>         // Added for std::atomic
 
 // --- Firmware Version ---
 #define FIRMWARE_VERSION "0.1.2" // Define firmware version
@@ -60,7 +61,7 @@ extern volatile bool tempSensorFound;
 extern volatile int fanRpm;
 extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
-extern volatile unsigned long pulseCount; // For ISR
+extern std::atomic<uint32_t> pulseCount; // For ISR, changed to std::atomic<uint32_t>
 extern unsigned long lastRpmReadTime_Task; 
 
 // --- Menu System Variables ---
@@ -118,9 +119,9 @@ extern char mqttDeviceId[64];
 extern char mqttDeviceName[64];          
 
 // --- OTA Update Status ---
-extern volatile bool ota_in_progress;
-extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
+// extern volatile bool ota_in_progress; // Already declared above
+// extern String ota_status_message;      // Already declared above
+// extern String GITHUB_API_ROOT_CA_STRING; // Already declared above
 
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
