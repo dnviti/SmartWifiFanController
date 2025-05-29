@@ -1,0 +1,69 @@
+# .github/workflows/stale_management.yml
+name: Stale Issue and PR Management
+
+on:
+  # Run this workflow on a schedule (e.g., every day at midnight UTC)
+  schedule:
+    - cron: '0 0 * * *'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write       # Required to add labels, comments, and close issues
+      pull-requests: write # Required to add labels, comments, and close PRs
+
+    steps:
+      - name: Mark and close stale issues and PRs
+        uses: actions/stale@v9 # Use the latest version of the action
+        with:
+          # Token for the GitHub API
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- Configuration for Issues ---
+          # Comment to post when marking an issue as stale
+          stale-issue-message: >
+            This issue has been inactive for 60 days. It will be closed in 7 days if there is no further activity.
+            If you believe this issue is still relevant, please comment or provide an update. Thank you!
+          # Label to add when an issue is stale
+          stale-issue-label: 'stale'
+          # Number of days of inactivity before an issue is marked as stale
+          days-before-issue-stale: 60
+          # Number of days of inactivity before a stale issue is closed
+          days-before-issue-close: 7
+          # Exempt specific labels from being marked stale (comma-separated)
+          # exempt-issue-labels: 'pinned,security,never-stale'
+
+          # --- Configuration for Pull Requests ---
+          # Comment to post when marking a PR as stale
+          stale-pr-message: >
+            This pull request has been inactive for 30 days. It will be closed in 7 days if there is no further activity.
+            If this PR is still relevant, please rebase, comment, or provide an update. Thank you!
+          # Label to add when a PR is stale
+          stale-pr-label: 'stale'
+          # Number of days of inactivity before a PR is marked as stale
+          days-before-pr-stale: 30
+          # Number of days of inactivity before a stale PR is closed
+          days-before-pr-close: 7
+          # Exempt specific labels from being marked stale (comma-separated)
+          # exempt-pr-labels: 'work-in-progress,do-not-merge,never-stale'
+
+          # --- General Options ---
+          # Operations to perform per run (e.g., how many issues/PRs to process at once)
+          operations-per-run: 30
+          # Sort order for processing (asc or desc)
+          # sort-order: 'asc' # Process older items first
+          # Set to true to remove stale labels when an issue/PR is updated
+          remove-stale-when-updated: true
+          # Set to true to ignore updates made by bots (e.g., dependabot)
+          # ignore-updates: true
+
+          # Set to true to only process issues/PRs that are not in a project
+          # only-project-card-issues: false
+          # Set to true to only process issues/PRs that are not in a milestone
+          # only-milestone-issues: false
+
+          # Set to true to enable debug logging for the action
+          # debug-only: false

@@ -1,0 +1,56 @@
+# .github/workflows/code_quality_checks.yml
+name: Code Quality Checks
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths: # Only run if C/C++ or workflow files change
+      - 'src/**.[ch]pp'
+      - 'src/**.h'
+      - 'test/**.[ch]pp'
+      - 'test/**.h'
+      - '.github/workflows/code_quality_checks.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**.[ch]pp'
+      - 'src/**.h'
+      - 'test/**.[ch]pp'
+      - 'test/**.h'
+      - '.github/workflows/code_quality_checks.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Check C/C++ Formatting
+        run: |
+          echo "Checking formatting for .cpp and .h files in src/ and test/ directories..."
+          # Find all .cpp, .hpp, .h, .c, .cc files in src and test directories
+          # The -style=file flag tells clang-format to look for a .clang-format file.
+          # If not found, it defaults to a fallback style (often LLVM).
+          # To enforce a specific style if no .clang-format file exists, use e.g. -style=Google
+          # The --dry-run and -Werror flags will cause the command to exit with an error
+          # if any files need formatting, which fails the workflow step.
+          find src/ test/ -iname '*.cpp' -o -iname '*.hpp' -o -iname '*.h' -o -iname '*.c' -o -iname '*.cc' \
+            | xargs clang-format --style=file --dry-run -Werror
+          echo "Formatting check passed."
+        # If you want to enforce a specific style when no .clang-format file is present:
+        # run: |
+        #   find src/ test/ -iname '*.cpp' -o -iname '*.hpp' -o -iname '*.h' -o -iname '*.c' -o -iname '*.cc' \
+        #     | xargs clang-format --style=Google --dry-run -Werror
+
+  # Add other linting jobs here if needed (e.g., for web assets if they become more complex)
+

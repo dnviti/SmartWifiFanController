@@ -1,168 +1,150 @@
-name: Create Release and Build Artifacts
+# .github/workflows/release.yml
+name: PlatformIO Release Build & Publish
 
+# Trigger the workflow on push events for tags matching v*.*.* or v*.*.*-*
 on:
   push:
-    branches:
-      - 'release/v*' # Trigger on branches like release/v1.0.0, release/v1.2.3-alpha
-
-permissions:
-  contents: write # Needed to create releases and upload assets
+    tags:
+      - 'v*.*.*'       # Matches v1.0.0, v1.2.3, etc. (Full releases)
+      - 'v*.*.*-*'     # Matches v1.0.0-beta.1, v1.2.3-rc.2, etc. (Pre-releases)
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    env:
-      PIO_ENV: esp32_fancontrol # Your PlatformIO environment name from platformio.ini
-      # Filename for the downloaded CA certificate
-      CA_CERT_FILENAME: "github_root_ca.pem" 
-      GITHUB_API_HOST: "api.github.com"
+    permissions:
+      contents: write # Required to create a release and upload assets
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # Ensure submodules are checked out if used
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # PlatformIO recommends Python 3.9+
+          python-version: '3.9' # Specify Python version for PlatformIO
 
-      - name: Install PlatformIO Core and OpenSSL
+      - name: Install PlatformIO Core
+        run: pip install -U platformio
+
+      # Extract version from the Git tag and determine if it's a pre-release
+      - name: Get Version and Pre-release Info
+        id: version_info
         run: |
-          pip install -U platformio
-          sudo apt-get update && sudo apt-get install -y openssl
+          TAG_NAME="${{ github.ref_name }}"
+          # VERSION variable (without 'v') can be used if needed by other tools
+          VERSION="${TAG_NAME#v}"
+          
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          
+          if [[ "$TAG_NAME" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            echo "MAKE_LATEST=false" >> $GITHUB_ENV # Pre-releases should not be 'latest'
+            echo "RELEASE_NAME=Release ${TAG_NAME} (Pre-release)" >> $GITHUB_ENV
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "MAKE_LATEST=true" >> $GITHUB_ENV  # Non-prereleases are marked as latest
+            echo "RELEASE_NAME=Release ${TAG_NAME}" >> $GITHUB_ENV
+          fi
+          echo "Detected Tag: ${TAG_NAME}, Version: ${VERSION}, Pre-release: ${{ env.IS_PRERELEASE }}, Make Latest: ${{ env.MAKE_LATEST }}"
 
-      - name: Install project dependencies
-        run: pio pkg install --global # Installs libraries globally in the runner
+      - name: Cache PlatformIO data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('**/platformio.ini') }}
 
-      - name: Create data directory if it doesn't exist
-        run: mkdir -p data
-
-      - name: Download GitHub API Root CA Certificate
+      # Prepare data directory and download the CA certificate for GitHub API access by the device
+      # This CA cert is included in the SPIFFS image for the ESP32's OTA updates from GitHub.
+      - name: Prepare data directory and Download CA Certificate
         run: |
-          echo "Attempting to download Root CA for ${{ env.GITHUB_API_HOST }}..."
-          openssl s_client -showcerts -connect ${{ env.GITHUB_API_HOST }}:443 -servername ${{ env.GITHUB_API_HOST }} < /dev/null 2>/dev/null | \
-          awk '
-            /BEGIN CERTIFICATE/ {
-              buffer=""
-              in_cert=1
-            }
-            in_cert {
-              buffer = buffer $0 "\n"
-            }
-            /END CERTIFICATE/ {
-              if (in_cert) {
-                last_cert=buffer
-                in_cert=0 
-              }
-            }
-            END {
-              if (last_cert != "") {
-                print "Found a certificate, saving as data/${{ env.CA_CERT_FILENAME }}"
-                printf "%s", last_cert > "data/${{ env.CA_CERT_FILENAME }}"
-              } else {
-                echo "Error: Could not extract any certificate from ${{ env.GITHUB_API_HOST }}"
-                exit 1
-              }
-            }
-          '
-          if [ ! -s data/${{ env.CA_CERT_FILENAME }} ]; then
-            echo "Error: Failed to download or CA certificate file (data/${{ env.CA_CERT_FILENAME }}) is empty."
+          mkdir -p data
+          # Using DigiCert Global Root CA as an example. Verify the correct CA for api.github.com.
+          curl -L -o data/github_api_ca.pem https://cacerts.digicert.com/DigiCertGlobalRootCA.crt
+          echo "CA certificate downloaded to data/github_api_ca.pem"
+        env:
+          # This filename should match GITHUB_ROOT_CA_FILENAME in src/config.h
+          CA_CERT_FILENAME: github_api_ca.pem 
+
+      # Set the PlatformIO build environment name.
+      # This must match PIO_BUILD_ENV_NAME in src/config.h and the environment name in platformio.ini
+      - name: Set Build Environment Name
+        run: echo "PIO_BUILD_ENV_NAME=esp32_fancontrol" >> $GITHUB_ENV
+
+      - name: Build Firmware and SPIFFS Image
+        run: |
+          echo "Building for PlatformIO environment: ${{ env.PIO_BUILD_ENV_NAME }}"
+          # Build firmware
+          platformio run -e ${{ env.PIO_BUILD_ENV_NAME }}
+          # Build SPIFFS image (this will include the downloaded CA certificate from the data/ directory)
+          platformio run -e ${{ env.PIO_BUILD_ENV_NAME }} --target buildfs
+        env:
+          PLATFORMIO_CI_SRC: ${{ github.workspace }} # Ensures PlatformIO uses the checked-out code
+
+      - name: Prepare Artifacts for Release
+        id: prepare_artifacts
+        run: |
+          mkdir -p release_artifacts
+          FW_VERSION_TAG="${{ env.TAG_NAME }}" # Use the full tag like v0.1.2 for filenames
+          
+          FIRMWARE_PATH=".pio/build/${{ env.PIO_BUILD_ENV_NAME }}/firmware.bin"
+          SPIFFS_PATH=".pio/build/${{ env.PIO_BUILD_ENV_NAME }}/spiffs.bin"
+          
+          if [ ! -f "$FIRMWARE_PATH" ]; then
+            echo "Error: Firmware file not found at $FIRMWARE_PATH"
             exit 1
           fi
-          echo "GitHub API Root CA certificate downloaded successfully to data/${{ env.CA_CERT_FILENAME }}."
-          echo "--- Certificate Content (first 5 lines) ---"
-          head -n 5 data/${{ env.CA_CERT_FILENAME }}
-          echo "----------------------------------------"
-          ls -l data/ 
-        shell: bash
-
-      - name: Build Firmware
-        run: pio run -e ${{ env.PIO_ENV }}
-
-      - name: Build Filesystem Image (includes downloaded CA cert)
-        run: pio run -e ${{ env.PIO_ENV }} --target buildfs
-
-      - name: Get Version from Branch
-        id: get_version
-        run: |
-          BRANCH_NAME="${GITHUB_REF#refs/heads/release/}"
-          echo "VERSION_TAG=${BRANCH_NAME}" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Determine Asset Names and Prepare Files
-        id: asset_names
-        run: |
-          # Asset names for the version-specific release
-          VERSIONED_FIRMWARE_NAME="firmware_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
-          VERSIONED_SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
+          if [ ! -f "$SPIFFS_PATH" ]; then
+            echo "Error: SPIFFS image file not found at $SPIFFS_PATH"
+            exit 1
+          fi
           
-          # Asset names for the 'latest' release
-          LATEST_FIRMWARE_NAME="firmware_${{ env.PIO_ENV }}_latest.bin"
-          LATEST_SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_latest.bin"
+          cp "$FIRMWARE_PATH" "release_artifacts/firmware_${{ env.PIO_BUILD_ENV_NAME }}_${FW_VERSION_TAG}.bin"
+          cp "$SPIFFS_PATH" "release_artifacts/spiffs_${{ env.PIO_BUILD_ENV_NAME }}_${FW_VERSION_TAG}.bin"
           
-          # Output versioned names to GITHUB_ENV for the version-specific release
-          echo "VERSIONED_FIRMWARE_ASSET_NAME=${VERSIONED_FIRMWARE_NAME}" >> $GITHUB_ENV
-          echo "VERSIONED_SPIFFS_ASSET_NAME=${VERSIONED_SPIFFS_NAME}" >> $GITHUB_ENV
+          echo "Artifacts prepared in release_artifacts/ directory:"
+          ls -l release_artifacts
           
-          # Output 'latest' names to GITHUB_ENV for the 'latest' release
-          echo "LATEST_FIRMWARE_ASSET_NAME=${LATEST_FIRMWARE_NAME}" >> $GITHUB_ENV
-          echo "LATEST_SPIFFS_ASSET_NAME=${LATEST_SPIFFS_NAME}" >> $GITHUB_ENV
-          
-          # Copy built files to versioned names
-          echo "Copying .pio/build/${{ env.PIO_ENV }}/firmware.bin to ${VERSIONED_FIRMWARE_NAME}"
-          cp .pio/build/${{ env.PIO_ENV }}/firmware.bin "${VERSIONED_FIRMWARE_NAME}"
-          echo "Copying .pio/build/${{ env.PIO_ENV }}/spiffs.bin to ${VERSIONED_SPIFFS_NAME}"
-          cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin "${VERSIONED_SPIFFS_NAME}"
+          echo "FIRMWARE_ARTIFACT_NAME=firmware_${{ env.PIO_BUILD_ENV_NAME }}_${FW_VERSION_TAG}.bin" >> $GITHUB_OUTPUT
+          echo "SPIFFS_ARTIFACT_NAME=spiffs_${{ env.PIO_BUILD_ENV_NAME }}_${FW_VERSION_TAG}.bin" >> $GITHUB_OUTPUT
 
-          # Copy built files to 'latest' names (these will be the same content as versioned ones for this run)
-          echo "Copying .pio/build/${{ env.PIO_ENV }}/firmware.bin to ${LATEST_FIRMWARE_NAME}"
-          cp .pio/build/${{ env.PIO_ENV }}/firmware.bin "${LATEST_FIRMWARE_NAME}"
-          echo "Copying .pio/build/${{ env.PIO_ENV }}/spiffs.bin to ${LATEST_SPIFFS_NAME}"
-          cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin "${LATEST_SPIFFS_NAME}"
-          
-          echo "Listing files in current directory:"
-          ls -l
-        shell: bash
 
-      - name: Create Release from Branch
-        id: create_tagged_release
-        uses: softprops/action-gh-release@v2
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} # Updated: Pass token as input
-          tag_name: ${{ env.VERSION_TAG }}
-          name: Release ${{ env.VERSION_TAG }}
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: ${{ env.RELEASE_NAME }}
           body: |
-            Automated release for version ${{ env.VERSION_TAG }} (from branch ${{ github.ref_name }}).
-            Contains firmware and SPIFFS filesystem image.
-            The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
+            Automated release for version ${{ env.TAG_NAME }}.
+            Firmware and SPIFFS images are attached.
+            ${{ env.IS_PRERELEASE == 'true' && 'This is a pre-release.' || '' }}
           draft: false
-          prerelease: ${{ contains(env.VERSION_TAG, '-') }}
-          files: | 
-            ${{ env.VERSIONED_FIRMWARE_ASSET_NAME }}
-            ${{ env.VERSIONED_SPIFFS_ASSET_NAME }}
+          prerelease: ${{ env.IS_PRERELEASE }} # True for tags like v1.0.0-beta, false otherwise
+          make_latest: ${{ env.MAKE_LATEST }}   # True for non-prereleases, false for pre-releases
 
-      - name: Delete 'latest' Release and Tag if they exist
-        uses: dev-drprasad/delete-tag-and-release@v1.1
+      - name: Upload Firmware Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }} # Updated: Pass token as input
-          tag_name: latest
-          delete_release: true
-        continue-on-error: true
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release_artifacts/${{ steps.prepare_artifacts.outputs.FIRMWARE_ARTIFACT_NAME }}
+          asset_name: ${{ steps.prepare_artifacts.outputs.FIRMWARE_ARTIFACT_NAME }}
+          asset_content_type: application/octet-stream
 
-      - name: Create 'latest' Release
-        id: create_latest_release
-        uses: softprops/action-gh-release@v2
+      - name: Upload SPIFFS Image Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} # Updated: Pass token as input
-          tag_name: latest
-          name: Latest Build
-          body: |
-            This is the latest automated build.
-            Based on version: ${{ env.VERSION_TAG }} (from branch ${{ github.ref_name }})
-            Contains firmware and SPIFFS filesystem image.
-            The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
-          draft: false
-          prerelease: false
-          files: | 
-            ${{ env.LATEST_FIRMWARE_ASSET_NAME }}
-            ${{ env.LATEST_SPIFFS_ASSET_NAME }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release_artifacts/${{ steps.prepare_artifacts.outputs.SPIFFS_ARTIFACT_NAME }}
+          asset_name: ${{ steps.prepare_artifacts.outputs.SPIFFS_ARTIFACT_NAME }}
+          asset_content_type: application/octet-stream
