@@ -3,7 +3,7 @@ name: Create Release and Build Artifacts
 on:
   push:
     branches:
-      - "release/v*" # Trigger on branches like release/v1.0.0, release/v1.2.3-alpha
+      - 'release/v*' # Trigger on branches like release/v1.0.0, release/v1.2.3-alpha
 
 permissions:
   contents: write # Needed to create releases and upload assets
@@ -14,7 +14,7 @@ jobs:
     env:
       PIO_ENV: esp32_fancontrol # Your PlatformIO environment name from platformio.ini
       # Filename for the downloaded CA certificate
-      CA_CERT_FILENAME: "github_root_ca.pem"
+      CA_CERT_FILENAME: "github_root_ca.pem" 
       GITHUB_API_HOST: "api.github.com"
 
     steps:
@@ -24,7 +24,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9" # PlatformIO recommends Python 3.9+
+          python-version: '3.9' # PlatformIO recommends Python 3.9+
 
       - name: Install PlatformIO Core and OpenSSL
         run: |
@@ -73,7 +73,7 @@ jobs:
           echo "--- Certificate Content (first 5 lines) ---"
           head -n 5 data/${{ env.CA_CERT_FILENAME }}
           echo "----------------------------------------"
-          ls -l data/
+          ls -l data/ 
         shell: bash
 
       - name: Build Firmware
@@ -95,19 +95,19 @@ jobs:
           # Asset names for the version-specific release
           VERSIONED_FIRMWARE_NAME="firmware_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
           VERSIONED_SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
-
+          
           # Asset names for the 'latest' release
           LATEST_FIRMWARE_NAME="firmware_${{ env.PIO_ENV }}_latest.bin"
           LATEST_SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_latest.bin"
-
+          
           # Output versioned names to GITHUB_ENV for the version-specific release
           echo "VERSIONED_FIRMWARE_ASSET_NAME=${VERSIONED_FIRMWARE_NAME}" >> $GITHUB_ENV
           echo "VERSIONED_SPIFFS_ASSET_NAME=${VERSIONED_SPIFFS_NAME}" >> $GITHUB_ENV
-
+          
           # Output 'latest' names to GITHUB_ENV for the 'latest' release
           echo "LATEST_FIRMWARE_ASSET_NAME=${LATEST_FIRMWARE_NAME}" >> $GITHUB_ENV
           echo "LATEST_SPIFFS_ASSET_NAME=${LATEST_SPIFFS_NAME}" >> $GITHUB_ENV
-
+          
           # Copy built files to versioned names
           echo "Copying .pio/build/${{ env.PIO_ENV }}/firmware.bin to ${VERSIONED_FIRMWARE_NAME}"
           cp .pio/build/${{ env.PIO_ENV }}/firmware.bin "${VERSIONED_FIRMWARE_NAME}"
@@ -119,7 +119,7 @@ jobs:
           cp .pio/build/${{ env.PIO_ENV }}/firmware.bin "${LATEST_FIRMWARE_NAME}"
           echo "Copying .pio/build/${{ env.PIO_ENV }}/spiffs.bin to ${LATEST_SPIFFS_NAME}"
           cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin "${LATEST_SPIFFS_NAME}"
-
+          
           echo "Listing files in current directory:"
           ls -l
         shell: bash
@@ -128,6 +128,7 @@ jobs:
         id: create_tagged_release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }} # Updated: Pass token as input
           tag_name: ${{ env.VERSION_TAG }}
           name: Release ${{ env.VERSION_TAG }}
           body: |
@@ -136,25 +137,23 @@ jobs:
             The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
           draft: false
           prerelease: ${{ contains(env.VERSION_TAG, '-') }}
-          files: |
+          files: | 
             ${{ env.VERSIONED_FIRMWARE_ASSET_NAME }}
             ${{ env.VERSIONED_SPIFFS_ASSET_NAME }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete 'latest' Release and Tag if they exist
         uses: dev-drprasad/delete-tag-and-release@v1.1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Updated: Pass token as input
           tag_name: latest
           delete_release: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
       - name: Create 'latest' Release
         id: create_latest_release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }} # Updated: Pass token as input
           tag_name: latest
           name: Latest Build
           body: |
@@ -164,8 +163,6 @@ jobs:
             The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
           draft: false
           prerelease: false
-          files: |
+          files: | 
             ${{ env.LATEST_FIRMWARE_ASSET_NAME }}
             ${{ env.LATEST_SPIFFS_ASSET_NAME }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
