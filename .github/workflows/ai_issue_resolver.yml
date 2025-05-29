@@ -18,10 +18,8 @@ on:
 
 permissions:
   contents: write      # To create branches, commit, push
-  issues: read         # To read issues
   pull-requests: write # To create pull requests
-  # Add issues: write permission to allow commenting on issues
-  issues: write        # To comment on issues
+  issues: write        # To read issues and write comments
 
 jobs:
   resolve_issues_with_ai:
