@@ -76,7 +76,7 @@ jobs:
           INITIAL_BACKOFF = 5  # Increased initial backoff
           INTER_FILE_DELAY = 3 # Increased delay between files
           # Default to gpt-4o-mini, can be overridden by env var OPENAI_MODEL_NAME_OVERRIDE
-          OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', 'gpt-4o-mini')
+          OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', '4o-mini')
           RELEVANT_EXTENSIONS = ('.cpp', '.h', '.c', '.hpp', '.cc', '.hh', '.cxx', '.hxx') # Define relevant file extensions
           EXCLUDE_DIRS = ['.git', '.github', 'build', 'dist', 'venv', '.venv', 'node_modules', '__pycache__', 'docs/build'] # Directories to exclude
           EXCLUDE_FILES = ['LICENSE', 'LICENSE.md', 'CONTRIBUTING.md'] # Specific files to exclude by name
