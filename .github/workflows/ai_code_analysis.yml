@@ -7,10 +7,18 @@ on:
       - 'test/**.cpp'
       # Add other relevant file types and paths
   workflow_dispatch: # Allows manual triggering
+    inputs:
+      custom_openai_model:
+        description: 'OpenAI Model to use (e.g., 4o-mini, gpt-4-turbo). Leave empty for script default.'
+        required: false
+        default: '' # Default to empty, script will use its own default
 
 jobs:
   analyze-code:
     runs-on: ubuntu-latest
+    # You can define the environment variable at the job level if you prefer
+    # env:
+    #   OPENAI_MODEL_NAME_OVERRIDE_JOB_LEVEL: 'gpt-4-turbo' # Example
     permissions:
       contents: read          # To checkout the repository
       pull-requests: read    # To read PR details if needed (e.g., PR number for context)
@@ -41,8 +49,6 @@ jobs:
             MERGE_BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
             FILES=$(git diff --name-only $MERGE_BASE HEAD | grep -E '\.(cpp|h|c|hpp|cc|hh|cxx|hxx)$' | tr '\n' ' ')
           else # For workflow_dispatch or other events, analyze all relevant files
-            # This command for finding all files will be executed by the Python script itself
-            # if FILES_TO_ANALYZE is set to "*"
             echo "Triggered by workflow_dispatch or other event. Python script will handle file discovery if FILES_TO_ANALYZE='*'."
             FILES="*" # Signal to Python script to find all files
           fi
@@ -61,7 +67,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
           REPO_NAME: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          OPENAI_MODEL_NAME_OVERRIDE: ${{ secrets.OPENAI_MODEL_NAME_OVERRIDE }}
+          # Use the workflow_dispatch input if available, otherwise it will be empty,
+          # and the Python script will use its internal default.
+          OPENAI_MODEL_NAME_OVERRIDE: ${{ github.event.inputs.custom_openai_model || '' }}
           FILES_TO_ANALYZE: "${{ steps.changed_files.outputs.files_to_analyze }}" # Pass the determined files or "*"
         run: |
           import os
@@ -73,22 +81,28 @@ jobs:
 
           # --- Configuration ---
           MAX_RETRIES = 5
-          INITIAL_BACKOFF = 5  # Increased initial backoff
-          INTER_FILE_DELAY = 3 # Increased delay between files
-          # Default to gpt-4o-mini, can be overridden by env var OPENAI_MODEL_NAME_OVERRIDE
-          OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', '4o-mini')
-          RELEVANT_EXTENSIONS = ('.cpp', '.h', '.c', '.hpp', '.cc', '.hh', '.cxx', '.hxx') # Define relevant file extensions
-          EXCLUDE_DIRS = ['.git', '.github', 'build', 'dist', 'venv', '.venv', 'node_modules', '__pycache__', 'docs/build'] # Directories to exclude
-          EXCLUDE_FILES = ['LICENSE', 'LICENSE.md', 'CONTRIBUTING.md'] # Specific files to exclude by name
+          INITIAL_BACKOFF = 5
+          INTER_FILE_DELAY = 3
+          DEFAULT_OPENAI_MODEL_NAME = '4o-mini' # Default model
+          OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', DEFAULT_OPENAI_MODEL_NAME)
+          if not OPENAI_MODEL_NAME.strip(): # If override is empty string, use default
+              OPENAI_MODEL_NAME = DEFAULT_OPENAI_MODEL_NAME
+              
+          RELEVANT_EXTENSIONS = ('.cpp', '.h', '.c', '.hpp', '.cc', '.hh', '.cxx', '.hxx')
+          EXCLUDE_DIRS = ['.git', '.github', 'build', 'dist', 'venv', '.venv', 'node_modules', '__pycache__', 'docs/build']
+          EXCLUDE_FILES = ['LICENSE', 'LICENSE.md', 'CONTRIBUTING.md']
 
           OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
           if not OPENAI_API_KEY:
               print("Error: OPENAI_API_KEY not found in environment variables.")
               exit(1)
 
+          # This will now be printed in the GitHub Actions log
+          print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}' (Script default was: '{DEFAULT_OPENAI_MODEL_NAME}')")
+
           try:
             client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            print(f"Successfully configured OpenAI client for model: {OPENAI_MODEL_NAME}")
+            print(f"Successfully configured OpenAI client.") 
           except Exception as e:
             print(f"Error configuring OpenAI client: {e}")
             exit(1)
@@ -119,7 +133,7 @@ jobs:
                   "Focus only on issues present in or directly suggested by THIS code. "
                   "Remember to provide your response strictly as a JSON array of issue objects, or an empty array if no issues are found.\n\n"
                   f"File Path: {file_path}\n"
-                  "```cpp\n" # Assuming C++ for now, could be made dynamic if needed
+                  "```cpp\n" 
                   f"{file_content}\n"
                   "```\n"
                   "JSON Array of Issues:"
@@ -147,15 +161,14 @@ jobs:
                               issues = parsed_response["suggestions"]
                           else:
                               print(f"AI returned a JSON object, but expected an array or a dict with a known key for issues. Content: {response_content[:200]}...")
-                              # Attempt to load as list directly if it's a string representation of a list
                               try:
                                   potential_list = json.loads(response_content)
                                   if isinstance(potential_list, list):
                                       issues = potential_list
                                   else:
-                                      issues = [] # Fallback to empty if not a list
+                                      issues = [] 
                               except json.JSONDecodeError:
-                                  issues = [] # Fallback if direct parsing as list also fails
+                                   issues = [] 
 
                           print(f"Successfully received and parsed AI analysis for {file_path} on attempt {retries + 1}. Found {len(issues)} potential issues.")
                           return issues
@@ -164,13 +177,17 @@ jobs:
                           if retries >= MAX_RETRIES -1:
                             return [{"title": f"AI Analysis Error: Non-JSON Response for {file_path}", 
                                       "description": f"The AI's response for `{file_path}` was not valid JSON and could not be parsed after {MAX_RETRIES} attempts.\n\nRaw response snippet:\n```\n{response_content[:1000]}\n```",
-                                      "category": "bug", "file_path": file_path}]
+                                      "category": "internal_error", "file_path": file_path}] 
                   
                   except openai.APIError as e:
                       error_str = str(e).lower()
+                      if hasattr(e, 'code') and e.code == 'model_not_found':
+                          print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' not found or access denied. Error: {e}")
+                          return [{"title": f"AI Model Not Found: {OPENAI_MODEL_NAME}", "description": f"Analysis skipped for `{file_path}`: The OpenAI model '{OPENAI_MODEL_NAME}' was not found or your API key does not have access to it. Please verify the model name and your API key permissions. Error details: {e}", "category": "configuration_error", "file_path": file_path}]
+
                       if e.status_code == 400 and hasattr(e, 'body') and e.body and 'param' in e.body and e.body.get('param') == 'temperature' and 'unsupported_value' in e.body.get('code',''):
                           print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' does not support the specified temperature or temperature setting. Error: {e.body.get('message')}")
-                          return [{"title": f"AI Model Config Error for {file_path}", "description": f"Analysis skipped for `{file_path}`: Model '{OPENAI_MODEL_NAME}' does not support current temperature settings. Error: {e.body.get('message')}", "category": "bug", "file_path": file_path}]
+                          return [{"title": f"AI Model Config Error for {file_path}", "description": f"Analysis skipped for `{file_path}`: Model '{OPENAI_MODEL_NAME}' does not support current temperature settings. Error: {e.body.get('message')}", "category": "configuration_error", "file_path": file_path}]
 
                       if e.status_code == 429 or "rate limit" in error_str or "too many requests" in error_str:
                           retries += 1
@@ -201,7 +218,7 @@ jobs:
                       else:
                           print(f"Unexpected OpenAI API error for {file_path}: {e}")
                           if hasattr(e, 'body') and e.body: print(f"Error details: {e.body}")
-                          return None
+                          return None 
                   except Exception as e:
                       print(f"General error calling OpenAI for {file_path}: {e}")
                       retries += 1
@@ -244,12 +261,8 @@ jobs:
                   return False
 
           def get_all_repo_files(root_dir=".", extensions=RELEVANT_EXTENSIONS, exclude_dirs=EXCLUDE_DIRS, exclude_files=EXCLUDE_FILES):
-              """
-              Walks the repository to find all files with specified extensions, excluding certain directories and files.
-              """
               repo_files = []
               abs_exclude_dirs = [os.path.abspath(os.path.join(root_dir, d)) for d in exclude_dirs]
-
               for dirpath, dirnames, filenames in os.walk(root_dir):
                   dirnames[:] = [d for d in dirnames if os.path.abspath(os.path.join(dirpath, d)) not in abs_exclude_dirs and not d.startswith('.')]
                   for filename in filenames:
@@ -259,6 +272,8 @@ jobs:
               return repo_files
 
           def main():
+              print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}' (Script default was: '{DEFAULT_OPENAI_MODEL_NAME}')")
+
               files_to_analyze_input = os.getenv('FILES_TO_ANALYZE')
               files_to_analyze = []
 
@@ -274,8 +289,6 @@ jobs:
                   files_to_analyze = [f.strip() for f in files_to_analyze_input.strip().split(' ') if f.strip()]
               else:
                   print("FILES_TO_ANALYZE environment variable not set or empty, and not '*'. Assuming no files to analyze for this run.")
-                  # If running in a PR context without changed files, this might be expected.
-                  # If running manually and expecting a full scan, ensure FILES_TO_ANALYZE is set to "*".
                   exit(0) 
               
               if not files_to_analyze:
@@ -317,9 +330,10 @@ jobs:
                                   print(f"Warning: Invalid issue format received from AI for {file_path}. Skipping: {issue_data}")
                                   continue
 
-                              path_for_filename = issue_data.get('file_path', file_path) # AI might include file_path in its response
+                              path_for_filename = issue_data.get('file_path', file_path) 
                               filename_only = os.path.basename(path_for_filename)
-                              title = f"AI Suggestion for `{filename_only}`: {issue_data['title']}"
+                              category_prefix = issue_data['category'].replace('_', ' ').title()
+                              title = f"AI ({category_prefix}): {issue_data['title']} in `{filename_only}`"
                               
                               pr_number_env = os.getenv('PR_NUMBER')
                               pr_context = f"\n\n_Context: Analysis triggered by PR #{pr_number_env}_" if pr_number_env else ""
@@ -327,18 +341,11 @@ jobs:
                               
                               category = issue_data['category'].lower()
                               labels = ["AI Suggested"]
-                              if category == "bug":
-                                  labels.append("bug")
-                              elif category == "enhancement":
-                                  labels.append("enhancement")
-                              elif category == "refactor":
-                                  labels.append("refactor")
-                              elif category == "documentation":
-                                  labels.append("documentation")
-                              elif category == "feature_suggestion":
-                                  labels.append("feature request")
+                              valid_categories_for_labels = ["bug", "enhancement", "refactor", "documentation", "feature_suggestion", "configuration_error", "internal_error"]
+                              if category in valid_categories_for_labels:
+                                labels.append(category.replace('_', '-')) 
                               else:
-                                  labels.append("ai-misc")
+                                labels.append("ai-misc")
 
                               if create_github_issue(title, body, labels):
                                   total_issues_created += 1
