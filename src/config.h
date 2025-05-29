@@ -48,6 +48,7 @@ extern const int PWM_FREQ;
 extern const int PWM_RESOLUTION_BITS;
 extern const int AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE;
 extern const int PULSES_PER_REVOLUTION;
+static constexpr int DEFAULT_CURVE_POINT_COUNT = 5; // Added for issue #101
 
 // --- Modes & States (Global Volatile Variables) ---
 extern volatile bool isAutoMode;
