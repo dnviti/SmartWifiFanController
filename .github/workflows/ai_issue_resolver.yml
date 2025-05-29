@@ -65,6 +65,7 @@ jobs:
           from github import Github, GithubException, UnknownObjectException
           import google.generativeai as genai
           import subprocess
+          import fnmatch # For file extension matching
 
           # --- Configuration ---
           GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -79,26 +80,32 @@ jobs:
           MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
 
+          # Directories to scan for code context
+          DIRECTORIES_TO_SCAN = ['src', 'test', 'data'] 
+          # File extensions to include (add more as needed)
+          RELEVANT_EXTENSIONS = ['*.cpp', '*.h', '*.ino', '*.py', '*.js', '*.html', '*.css', '*.md', '*.yml', '*.json', '*.txt', '*.csv', '*.S']
+          # Max characters for the entire code context (to prevent overly large prompts)
+          # Gemini 1.5 Pro has a 1M token limit. 1 token ~ 4 chars. So ~4M chars.
+          # Let's set a more conservative limit for the raw text here, e.g., 2MB of characters.
+          # You'll need to tune this based on your project and API limits.
+          MAX_CONTEXT_CHARS = 2 * 1024 * 1024 # 2MB
+
           if not GEMINI_API_KEY:
               print("Error: GEMINI_API_KEY environment variable not set.")
               sys.exit(1)
-          if not GH_TOKEN:
-              print("Error: GH_TOKEN environment variable not set.")
-              sys.exit(1)
-          if not REPO_NWO:
-              print("Error: GITHUB_REPOSITORY_NWO environment variable not set.")
-              sys.exit(1)
+          # ... (other environment variable checks) ...
 
           genai.configure(api_key=GEMINI_API_KEY)
           g = Github(GH_TOKEN)
           try:
               repo = g.get_repo(REPO_NWO)
           except GithubException as e:
-              print(f"Error: Could not get repository '{REPO_NWO}'. Check token permissions and repository name. Details: {e}")
+              print(f"Error: Could not get repository '{REPO_NWO}'. Details: {e}")
               sys.exit(1)
 
           # --- Helper Functions ---
           def get_issues_to_process():
+              # ... (same as before) ...
               issues_to_process = []
               if ISSUE_NUMBER_INPUT:
                   try:
@@ -130,93 +137,55 @@ jobs:
                           break
               return issues_to_process
 
-          def get_relevant_code_context(issue_body, issue_title):
-              print(f"Attempting to fetch code context for issue: {issue_title}...")
-              context = "Relevant code context (if any was found):\n"
-              potential_files = []
-              if issue_body: 
-                  # Improved: Look for paths that might be relative to the repo root
-                  # This is still naive and needs more robust path detection and validation.
-                  import re
-                  # Regex to find potential file paths (very basic)
-                  # It looks for words with common extensions, possibly including some path separators.
-                  # This will pick up full paths from logs AND relative paths.
-                  # We need to be careful to only use relative paths with repo.get_contents()
-                  path_pattern = r'[\w\-\./]+\.(?:cpp|h|py|js|yml|md|txt|ino|c|hpp|S|java|json|xml|html|css|sh|ini|csv)'
-                  found_paths = re.findall(path_pattern, issue_body)
+
+          def get_entire_codebase_context():
+              print("Attempting to fetch entire codebase context from specified directories...")
+              full_context = "Full Codebase Context:\n"
+              current_chars = 0
+
+              for dir_path in DIRECTORIES_TO_SCAN:
+                  if not os.path.isdir(dir_path):
+                      print(f"  Warning: Directory '{dir_path}' not found in repository root. Skipping.")
+                      continue
                   
-                  for p_path in found_paths:
-                      # Attempt to normalize and make relative if it looks like an absolute path from logs
-                      # This is heuristic. A better way is to prompt AI to list relevant files.
-                      normalized_path = p_path
-                      # If path starts with common absolute prefixes from logs, try to make it relative
-                      # This part is very specific to the log format you showed earlier.
-                      if normalized_path.startswith('/home/runner/work/'):
-                          # Example: /home/runner/work/SmartWifiFanController/SmartWifiFanController/test/test.cpp
-                          # We want to get 'test/test.cpp' if REPO_NWO is 'owner/SmartWifiFanController'
-                          repo_name_in_path = REPO_NWO.split('/')[-1]
-                          parts = normalized_path.split(repo_name_in_path + '/', 1)
-                          if len(parts) > 1:
-                              normalized_path = parts[1]
-                          else: # Could not reliably make it relative
-                              print(f"  Could not normalize absolute path: {p_path}")
-                              continue 
-                      
-                      # Remove leading slashes if any, as get_contents expects path from root
-                      if normalized_path.startswith('/'):
-                          normalized_path = normalized_path[1:]
-
-                      if normalized_path not in potential_files:
-                          potential_files.append(normalized_path)
+                  print(f"  Scanning directory: {dir_path}")
+                  for root, _, files in os.walk(dir_path):
+                      for filename in files:
+                          include_file = any(fnmatch.fnmatch(filename, pat) for pat in RELEVANT_EXTENSIONS)
+                          if include_file:
+                              file_path = os.path.join(root, filename)
+                              try:
+                                  with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                      content = f.read()
+                                  
+                                  file_entry = f"File: {file_path}\n---\n{content}\n---\n\n"
+                                  
+                                  if current_chars + len(file_entry) > MAX_CONTEXT_CHARS:
+                                      print(f"  Warning: Maximum context size ({MAX_CONTEXT_CHARS} chars) reached. Stopping file inclusion.")
+                                      full_context += "Context truncated due to size limits.\n"
+                                      return full_context
+                                  
+                                  full_context += file_entry
+                                  current_chars += len(file_entry)
+                                  print(f"    Added context from: {file_path} ({len(content)} chars)")
+                              except Exception as e:
+                                  print(f"    Error reading file {file_path}: {e}")
               
-              if not potential_files and issue_title: # Fallback: try to guess from title
-                  for word in issue_title.split():
-                      if '.cpp' in word or '.h' in word:
-                           cleaned_word = ''.join(filter(lambda x: x.isalnum() or x in ['.', '/', '_', '-'], word))
-                           if cleaned_word not in potential_files:
-                               potential_files.append(cleaned_word)
-
-
-              if not potential_files:
-                  context += "No specific file paths identified in the issue body or title.\n"
-                  print(context.strip())
-                  return context
-
-              print(f"  Identified potential files: {potential_files}")
-              files_added_to_context = 0
-              for f_path in potential_files:
-                  try:
-                      print(f"  Attempting to fetch: '{f_path}'")
-                      file_content_obj = repo.get_contents(f_path)
-                      # Check if it's a file (not a directory)
-                      if file_content_obj.type == 'file':
-                          file_content = file_content_obj.decoded_content.decode('utf-8')
-                          context += f"File: {f_path}\n---\n{file_content[:2000]}\n---\n" # Limit context size
-                          print(f"    Added context from: {f_path}")
-                          files_added_to_context +=1
-                      else:
-                          print(f"    Skipping '{f_path}', as it is a directory.")
-                  except UnknownObjectException: # PyGithub specific exception for 404
-                      print(f"    Could not fetch file (404 Not Found): {f_path}")
-                  except GithubException as e:
-                      print(f"    GitHub API error fetching file {f_path}: {e.status} - {e.data.get('message', 'No message')}")
-                  except Exception as e:
-                      print(f"    Unexpected error fetching file {f_path}: {e}")
+              if current_chars == 0:
+                  full_context += "No relevant files found in specified directories or directories do not exist.\n"
               
-              if files_added_to_context == 0:
-                  context += "Could not fetch content for any identified potential files.\n"
-              
-              print(context.strip())
-              return context
+              print(f"Total characters in context: {current_chars}")
+              return full_context
 
           def call_gemini_api(prompt_text):
+              # ... (same as before, ensure it can handle large prompts if MAX_CONTEXT_CHARS is large) ...
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
                   response = model.generate_content(
                       prompt_text,
                       generation_config=genai.types.GenerationConfig(
-                          temperature=0.2, # Lower for more deterministic code fixes
+                          temperature=0.2, 
                           max_output_tokens=8192 
                       )
                   )
@@ -232,69 +201,59 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
+              # ... (same placeholder as before, needs significant development) ...
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
                   print("  AI response is empty. No changes to apply.")
                   return False
               try:
-                  # THIS IS STILL A VERY BASIC PLACEHOLDER.
-                  # A robust solution would parse structured output from the AI,
-                  # e.g., JSON or a specific multi-file format.
                   print("  AI Response to parse (first 500 chars): " + ai_response_text[:500])
-                  
-                  # Example: if AI provides "FILENAME: path/to/file.ext\n```code```"
-                  # This requires the AI to strictly follow the format.
                   file_blocks = ai_response_text.split("FILENAME: ")
                   for block in file_blocks:
                       if not block.strip():
                           continue
                       
                       lines = block.split('\n', 1)
-                      if not lines:
+                      if not lines or len(lines) < 2: # Ensure there's content after filename
                           continue
                       
                       file_path_to_change = lines[0].strip()
-                      if not file_path_to_change: # Could be the first split part is empty
-                          if len(lines) > 1 and "```" in lines[1]: # Check if content is in the rest
-                             # This might happen if the first "FILENAME:" was at the very start
-                             # and the split resulted in an empty first element.
-                             # This logic is getting complex and brittle, highlighting need for better parsing.
-                             pass # Let it fall through to content extraction
-                          else:
-                             continue
-
+                      if not file_path_to_change: 
+                          continue
 
                       if "```" not in lines[1]:
                           print(f"  Skipping block for '{file_path_to_change}', no code block found after filename.")
                           continue
                       
-                      content_parts = lines[1].split("```", 2)
-                      if len(content_parts) < 2:
-                          print(f"  Skipping block for '{file_path_to_change}', could not clearly parse code block.")
+                      # Extract content between the first pair of ```
+                      try:
+                          code_section = lines[1].split("```", 2)
+                          if len(code_section) < 2: # Should have content before, between, and after ```
+                              print(f"  Skipping block for '{file_path_to_change}', could not clearly parse code block (not enough ```).")
+                              continue
+                          
+                          code_content_with_lang = code_section[1] # Content is between the first pair
+                      except IndexError:
+                          print(f"  Skipping block for '{file_path_to_change}', error splitting by ```.")
                           continue
-                      
-                      # The code is between the first and second ```
-                      # The first part of content_parts[1] might be a language specifier
-                      code_content_with_lang = content_parts[1]
+
                       actual_code = ""
                       if '\n' in code_content_with_lang:
                           first_code_line, rest_of_code_block = code_content_with_lang.split('\n', 1)
-                          # Simple check for language specifier (e.g., cpp, python, etc.)
-                          if first_code_line.strip().isalnum() and len(first_code_line.strip()) <= 10:
+                          if first_code_line.strip().isalnum() and len(first_code_line.strip()) <= 10: # Simple lang check
                               actual_code = rest_of_code_block
                           else:
-                              actual_code = code_content_with_lang # Assume no language specifier
-                      else: # Single line in code block or empty
+                              actual_code = code_content_with_lang 
+                      else: 
                           actual_code = code_content_with_lang
 
-                      # Ensure directories exist
                       dir_name = os.path.dirname(file_path_to_change)
-                      if dir_name: # If file_path_to_change includes a directory
+                      if dir_name: 
                           os.makedirs(dir_name, exist_ok=True)
                           
                       with open(file_path_to_change, "w") as f:
-                          f.write(actual_code.strip() + "\n") # Ensure a newline at the end
+                          f.write(actual_code.strip() + "\n") 
                       print(f"  Applied changes to: {file_path_to_change}")
                       applied_changes = True
 
@@ -307,6 +266,7 @@ jobs:
               return applied_changes
 
           def run_git_command(command_list, ignore_error=False):
+              # ... (same as before) ...
               try:
                   print(f"Running git command: {' '.join(command_list)}")
                   result = subprocess.run(command_list, check=not ignore_error, capture_output=True, text=True)
@@ -324,9 +284,9 @@ jobs:
                   print(f"Error: git command not found. Ensure git is installed and in PATH.")
                   return False
 
-
           # --- Main Processing Logic ---
           def main():
+              # ... (setup and issue fetching same as before) ...
               print(f"Starting AI Issue Resolver for repository: {REPO_NWO}")
               print(f"Target branch for PRs: {TARGET_BRANCH}")
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
@@ -337,8 +297,12 @@ jobs:
                   return
 
               original_branch_or_commit = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
-              if original_branch_or_commit == "HEAD": # Detached head
+              if original_branch_or_commit == "HEAD": 
                   original_branch_or_commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+              # Get the full codebase context ONCE before looping through issues if it's static per run
+              # If context needs to be dynamic per issue, move this inside the loop
+              full_codebase_prompt_context = get_entire_codebase_context()
 
 
               for issue in issues:
@@ -348,35 +312,34 @@ jobs:
                   
                   run_git_command(["git", "checkout", TARGET_BRANCH])
                   run_git_command(["git", "pull", "origin", TARGET_BRANCH]) 
-
-                  # Delete local branch if it exists from a previous failed run, ignore error if it doesn't exist
                   run_git_command(["git", "branch", "-D", branch_name], ignore_error=True) 
                   
                   if not run_git_command(["git", "checkout", "-b", branch_name, f"origin/{TARGET_BRANCH}"]):
                       print(f"Failed to create or checkout branch {branch_name}. Skipping issue.")
-                      run_git_command(["git", "checkout", original_branch_or_commit]) # Go back to original state
+                      run_git_command(["git", "checkout", original_branch_or_commit]) 
                       continue 
 
-                  code_context = get_relevant_code_context(issue.body if issue.body else "", issue.title)
+                  # No longer calling get_relevant_code_context per issue, using full_codebase_prompt_context
                   
                   prompt = (
                       f"You are an expert software developer tasked with fixing a GitHub issue for the repository '{REPO_NWO}'.\n"
                       f"Issue Number: #{issue.number}\n"
                       f"Issue Title: {issue.title}\n"
                       f"Issue Description:\n{issue.body if issue.body else 'No description provided.'}\n\n"
-                      f"Relevant Code Context (if any was found or provided by user):\n{code_context}\n\n"
-                      f"Your task is to provide the necessary code changes to resolve this issue.\n"
+                      f"The following is the content of the project's relevant source files:\n{full_codebase_prompt_context}\n\n" # Use the full context
+                      f"Your task is to provide the necessary code changes to resolve this issue based on the provided codebase and issue details.\n"
                       f"Output ONLY the complete new content for each file that needs to be modified.\n"
                       f"Format your response strictly as follows for EACH modified file:\n"
                       f"FILENAME: path/to/your/file.ext\n"
                       f"```[optional_language_specifier_e.g.cpp]\n"
                       f"// New, complete content for the file goes here\n"
                       f"```\n"
-                      f"Ensure the file path is relative to the repository root.\n"
+                      f"Ensure the file path is relative to the repository root (e.g., src/main.cpp, test/some_test.cpp).\n"
                       f"If multiple files need changes, repeat the FILENAME and code block structure for each.\n"
                       f"If no code changes are needed, or if you cannot resolve the issue, respond with ONLY the text: NO_CHANGES_NEEDED\n"
                   )
                   
+                  # ... (rest of the main loop for AI call, parsing, git ops, PR creation is the same) ...
                   ai_response = call_gemini_api(prompt)
                   
                   if ai_response and "NO_CHANGES_NEEDED" not in ai_response :
@@ -398,7 +361,6 @@ jobs:
 
                           if not run_git_command(["git", "push", "-u", "origin", branch_name, "--force"]): 
                               print(f"Failed to git push branch {branch_name} for issue #{issue.number}.")
-                              # Don't delete local branch if push failed, allows manual inspection/push
                               run_git_command(["git", "checkout", TARGET_BRANCH])
                               continue
                               
@@ -434,7 +396,7 @@ jobs:
                       print(f"AI indicated no changes needed for issue #{issue.number}.")
                       run_git_command(["git", "checkout", TARGET_BRANCH]) 
                       run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
-                  else: # No response or error from AI
+                  else: 
                       print(f"No response or error from AI for issue #{issue.number}.")
                       run_git_command(["git", "checkout", TARGET_BRANCH]) 
                       run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
@@ -445,7 +407,6 @@ jobs:
                       print("Waiting for 60 seconds before processing next issue to avoid rate limits...")
                       time.sleep(60)
               
-              # Ensure we end up on the original branch/commit if no PRs were made or for cleanup
               run_git_command(["git", "checkout", original_branch_or_commit])
               print("AI Issue Resolver run finished.")
 
