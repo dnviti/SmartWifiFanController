@@ -19,25 +19,29 @@ on:
 permissions:
   contents: write      # To create branches, commit, push
   pull-requests: write # To create pull requests
-  issues: write        # To read issues and write comments
+  issues: write        # To read issues, write comments, and manage labels
 
 jobs:
   resolve_issues_with_ai:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # GITHUB_TOKEN is automatically available to gh CLI and git operations in Actions
+      # We pass it explicitly to the script for PyGithub via GH_TOKEN.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
       TARGET_BRANCH: develop 
       GEMINI_MODEL: "gemini-2.5-pro-preview-05-06" 
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
       GITHUB_REPOSITORY_NWO: ${{ github.repository }}
+      # Label to add to issues after a PR has been created by the AI
+      AI_PR_CREATED_LABEL: "ai-pr-created" 
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} 
+          token: ${{ secrets.GITHUB_TOKEN }} # Use the default GITHUB_TOKEN
           fetch-depth: 0 
 
       - name: Set up Python
@@ -66,15 +70,17 @@ jobs:
           import google.generativeai as genai
           import subprocess
           import fnmatch 
+          import re 
 
           # --- Configuration ---
           GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
           GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro-preview-05-06')
-          GH_TOKEN = os.getenv('GH_TOKEN')
+          GH_TOKEN = os.getenv('GH_TOKEN') 
           REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO') 
           TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'develop') 
           GIT_COMMIT_USER_NAME = os.getenv('GIT_COMMIT_USER_NAME')
           GIT_COMMIT_USER_EMAIL = os.getenv('GIT_COMMIT_USER_EMAIL')
+          AI_PR_CREATED_LABEL = os.getenv('AI_PR_CREATED_LABEL', 'ai-pr-created') # Get label from env
           
           ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
           MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
@@ -88,14 +94,14 @@ jobs:
               print("Error: GEMINI_API_KEY environment variable not set.")
               sys.exit(1)
           if not GH_TOKEN: 
-              print("Error: GH_TOKEN environment variable not set.")
+              print("Error: GH_TOKEN environment variable not set (should be secrets.GITHUB_TOKEN).")
               sys.exit(1)
           if not REPO_NWO: 
               print("Error: GITHUB_REPOSITORY_NWO environment variable not set.")
               sys.exit(1)
 
           genai.configure(api_key=GEMINI_API_KEY)
-          g = Github(GH_TOKEN)
+          g = Github(GH_TOKEN) 
           try:
               repo = g.get_repo(REPO_NWO)
           except GithubException as e:
@@ -107,9 +113,14 @@ jobs:
               issues_to_process = []
               if ISSUE_NUMBER_INPUT:
                   try:
-                      issue_obj = repo.get_issue(number=int(ISSUE_NUMBER_INPUT)) # Renamed to issue_obj
+                      issue_obj = repo.get_issue(number=int(ISSUE_NUMBER_INPUT)) 
                       if issue_obj.state == 'open':
-                          issues_to_process.append(issue_obj)
+                          # Check for the AI PR created label
+                          has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
+                          if has_ai_label:
+                              print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
+                          else:
+                              issues_to_process.append(issue_obj)
                       else:
                           print(f"Issue #{ISSUE_NUMBER_INPUT} is not open. Skipping.")
                   except GithubException as e:
@@ -119,8 +130,14 @@ jobs:
               else:
                   open_issues = repo.get_issues(state='open', sort='created', direction='asc')
                   count = 0
-                  for issue_obj in open_issues: # Renamed to issue_obj
+                  for issue_obj in open_issues: 
                       if count < MAX_ISSUES_TO_PROCESS:
+                          # Check for the AI PR created label
+                          has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
+                          if has_ai_label:
+                              print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
+                              continue # Skip this issue
+
                           branch_name = f"ai-fix/issue-{issue_obj.number}"
                           try:
                               repo.get_git_ref(f"heads/{branch_name}")
@@ -138,17 +155,15 @@ jobs:
                           break
               return issues_to_process
 
-
           def get_entire_codebase_context():
+              # ... (content as before)
               print("Attempting to fetch entire codebase context from specified directories...")
               full_context = "Full Codebase Context:\n"
               current_chars = 0
-
               for dir_path in DIRECTORIES_TO_SCAN:
                   if not os.path.isdir(dir_path):
                       print(f"  Warning: Directory '{dir_path}' not found in repository root. Skipping.")
                       continue
-                  
                   print(f"  Scanning directory: {dir_path}")
                   for root, _, files in os.walk(dir_path):
                       for filename in files:
@@ -158,26 +173,22 @@ jobs:
                               try:
                                   with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                                       content = f.read()
-                                  
                                   file_entry = f"File: {file_path}\n---\n{content}\n---\n\n"
-                                  
                                   if current_chars + len(file_entry) > MAX_CONTEXT_CHARS:
                                       print(f"  Warning: Maximum context size ({MAX_CONTEXT_CHARS} chars) reached. Stopping file inclusion.")
                                       full_context += "Context truncated due to size limits.\n"
                                       return full_context
-                                  
                                   full_context += file_entry
                                   current_chars += len(file_entry)
                               except Exception as e:
                                   print(f"    Error reading file {file_path}: {e}")
-              
               if current_chars == 0:
                   full_context += "No relevant files found in specified directories or directories do not exist.\n"
-              
               print(f"Total characters in context: {current_chars}")
               return full_context
 
           def call_gemini_api(prompt_text):
+              # ... (content as before)
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -200,6 +211,7 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
+              # ... (content as before)
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
@@ -207,70 +219,40 @@ jobs:
                   return False
               try:
                   print("  AI Response to parse (first 500 chars): " + ai_response_text[:500])
-                  file_blocks = ai_response_text.split("FILENAME: ")
-                  for block_idx, block in enumerate(file_blocks):
-                      if block_idx == 0 and not block.strip(): 
+                  pattern = re.compile(r"FILENAME:\s*(.*?)\n```(?:[a-zA-Z0-9_.-]*)?\n(.*?)\n```", re.DOTALL)
+                  matches = pattern.findall(ai_response_text)
+                  if not matches:
+                      print("  No valid FILENAME: ... ```...``` blocks found in AI response.")
+                      return False
+                  for match in matches:
+                      file_path_to_change = match[0].strip()
+                      actual_code = match[1].strip() 
+                      if not file_path_to_change:
+                          print("  Skipping block, filename is empty after regex match.")
                           continue
-                      if not block.strip():
-                          continue
-                      
-                      lines = block.split('\n', 1)
-                      if not lines or len(lines) < 2: 
-                          print(f"  Skipping block, not enough lines to get filename and content: {block[:100]}")
-                          continue
-                      
-                      file_path_to_change = lines[0].strip()
-                      if not file_path_to_change: 
-                          print(f"  Skipping block, filename is empty: {block[:100]}")
-                          continue
-
-                      if "```" not in lines[1]:
-                          print(f"  Skipping block for '{file_path_to_change}', no code block (```) found after filename.")
-                          continue
-                      
-                      try:
-                          code_section_parts = lines[1].split("```", 2)
-                          if len(code_section_parts) < 2: 
-                              print(f"  Skipping block for '{file_path_to_change}', could not clearly parse code block (not enough ```).")
-                              continue
-                          
-                          code_content_with_lang = code_section_parts[1] 
-                      except IndexError:
-                          print(f"  Skipping block for '{file_path_to_change}', error splitting by ```.")
-                          continue
-
-                      actual_code = ""
-                      if '\n' in code_content_with_lang:
-                          first_code_line, rest_of_code_block = code_content_with_lang.split('\n', 1)
-                          if first_code_line.strip().isalnum() and len(first_code_line.strip()) <= 10 and len(first_code_line.strip()) > 0: 
-                              actual_code = rest_of_code_block
-                          else: 
-                              actual_code = code_content_with_lang 
-                      else: 
-                          actual_code = code_content_with_lang
-
                       dir_name = os.path.dirname(file_path_to_change)
                       if dir_name: 
                           print(f"  Ensuring directory exists: {dir_name}")
                           os.makedirs(dir_name, exist_ok=True)
-                          
                       print(f"  Attempting to write to file: {file_path_to_change}")
                       with open(file_path_to_change, "w", encoding='utf-8') as f: 
-                          f.write(actual_code.strip() + "\n") 
+                          f.write(actual_code + "\n") 
                       print(f"  Successfully applied changes to: {file_path_to_change}")
                       applied_changes = True
-
               except Exception as e:
                   print(f"Error during parsing or applying changes: {e}")
                   return False
-              
               if not applied_changes:
                   print("No specific file changes were parsed and applied from AI response.")
               return applied_changes
 
           def run_git_command(command_list, ignore_error=False, work_dir=None):
+              # ... (content as before)
               try:
-                  print(f"Running git command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
+                  print(f"Running command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
+                  github_token_env = os.getenv('GITHUB_TOKEN', 'Not Set')
+                  print(f"  (Using GITHUB_TOKEN from env: ...{github_token_env[-4:] if len(github_token_env) > 4 else '****'})")
+                  
                   result = subprocess.run(command_list, check=not ignore_error, capture_output=True, text=True, cwd=work_dir)
                   stdout_clean = result.stdout.strip()
                   stderr_clean = result.stderr.strip()
@@ -284,7 +266,7 @@ jobs:
                   if e.stderr: print(f"STDERR: {e.stderr.strip()}")
                   return False
               except FileNotFoundError:
-                  print(f"Error: git command not found. Ensure git is installed and in PATH.")
+                  print(f"Error: command not found (is git or gh installed and in PATH?). Command: {command_list[0]}")
                   return False
 
           # --- Main Processing Logic ---
@@ -292,6 +274,11 @@ jobs:
               print(f"Starting AI Issue Resolver for repository: {REPO_NWO}")
               print(f"Target branch for PRs: {TARGET_BRANCH}") 
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
+              print(f"Label for processed issues: {AI_PR_CREATED_LABEL}")
+
+
+              if ALLOW_PR_CREATION:
+                  print("Note: PR creation will use the default GITHUB_TOKEN. Ensure your repository settings allow Actions to create PRs.")
 
               issues = get_issues_to_process()
               if not issues:
@@ -305,9 +292,8 @@ jobs:
 
               full_codebase_prompt_context = get_entire_codebase_context()
 
-              for issue_obj in issues: # Renamed 'issue' to 'issue_obj' to avoid conflict with module
+              for issue_obj in issues: 
                   print(f"\nProcessing Issue #{issue_obj.number}: {issue_obj.title}")
-                  
                   branch_name = f"ai-fix/issue-{issue_obj.number}"
                   
                   print(f"Preparing TARGET_BRANCH ('{TARGET_BRANCH}')...")
@@ -367,9 +353,9 @@ jobs:
                               run_git_command(["git", "checkout", TARGET_BRANCH]) 
                               run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
                               continue
-
+                          
                           run_git_command(["git", "push", "origin", "--delete", branch_name], ignore_error=True)
-
+                          
                           if not run_git_command(["git", "push", "-u", "origin", branch_name]): 
                               print(f"Failed to git push branch {branch_name} for issue #{issue_obj.number}.")
                               run_git_command(["git", "checkout", TARGET_BRANCH])
@@ -392,13 +378,13 @@ jobs:
                                   "--title", pr_title,
                                   "--body", pr_body
                               ]
+                              
                               try:
                                   print(f"Creating PR for branch {branch_name} against {TARGET_BRANCH}...")
                                   pr_result = subprocess.run(pr_command, check=True, capture_output=True, text=True)
                                   pr_url = pr_result.stdout.strip()
                                   print(f"Successfully created PR for issue #{issue_obj.number}: {pr_url}")
                                   
-                                  # Add comment to the issue
                                   comment_body = (
                                       f"🤖 AI Assistant has attempted a fix for this issue.\n"
                                       f"Please review the proposed changes in Pull Request: {pr_url}"
@@ -406,11 +392,14 @@ jobs:
                                   try:
                                       issue_obj.create_comment(comment_body)
                                       print(f"Successfully commented on issue #{issue_obj.number} with PR link.")
-                                  except GithubException as e_comment:
-                                      print(f"Failed to comment on issue #{issue_obj.number}: {e_comment}")
+                                      # Add the label to the issue
+                                      issue_obj.add_to_labels(AI_PR_CREATED_LABEL)
+                                      print(f"Successfully added label '{AI_PR_CREATED_LABEL}' to issue #{issue_obj.number}.")
+                                  except GithubException as e_label_comment:
+                                      print(f"Failed to comment or add label to issue #{issue_obj.number}: {e_label_comment}")
 
                               except subprocess.CalledProcessError as e:
-                                  print(f"Failed to create PR for issue #{issue_obj.number}: {e.stderr.strip()}")
+                                  print(f"Failed to create PR for issue #{issue_obj.number}. STDERR: {e.stderr.strip()}")
                           else:
                               print(f"PR creation is disabled. Branch {branch_name} pushed for issue #{issue_obj.number}. Manual PR needed.")
                       else: 
@@ -428,12 +417,13 @@ jobs:
                   
                   print(f"Finished processing issue #{issue_obj.number}.")
                   
-                  if MAX_ISSUES_TO_PROCESS > 1 and issues.index(issue_obj) < len(issues) - 1 : # Use issue_obj here
+                  if MAX_ISSUES_TO_PROCESS > 1 and issues.index(issue_obj) < len(issues) -1 : 
                       print("Waiting for 60 seconds before processing next issue to avoid rate limits...")
                       time.sleep(60)
               
               print(f"Returning to original branch/commit: {original_branch_or_commit}")
               run_git_command(["git", "checkout", original_branch_or_commit], ignore_error=True)
+              
               print("AI Issue Resolver run finished.")
 
           if __name__ == "__main__":
@@ -448,4 +438,5 @@ jobs:
           INPUT_ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
           INPUT_MAX_ISSUES_TO_PROCESS: ${{ github.event.inputs.max_issues_to_process }}
           INPUT_ALLOW_PR_CREATION: ${{ github.event.inputs.allow_pr_creation }}
+          # AI_PR_CREATED_LABEL is available from job env to the script
         run: python .github/scripts/ai_issue_processor.py 
