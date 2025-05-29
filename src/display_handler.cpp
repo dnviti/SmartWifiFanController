@@ -1,6 +1,10 @@
 #include "display_handler.h"
 #include "config.h" // For global variables and lcd object
 
+// Static buffer to hold the string representation of mqttPort for display.
+// Max port value is 65535 (5 digits), plus null terminator.
+static char mqttPortDisplayBuffer[6];
+
 void updateLCD_NormalMode() { 
     lcd.clear();
     lcd.setCursor(0, 0);
@@ -74,7 +78,14 @@ void displayMenu() {
         case WIFI_STATUS:           displayWiFiStatusMenu(); break; 
         case MQTT_SETTINGS:         displayMqttSettingsMenu(); break;
         case MQTT_SERVER_ENTRY:     displayMqttEntryMenu("MQTT Server:", mqttServer, false, false, sizeof(mqttServer)-1); break;
-        case MQTT_PORT_ENTRY:       displayMqttEntryMenu("MQTT Port:", String(mqttPort).c_str(), false, true, 5); break;
+        case MQTT_PORT_ENTRY:       
+            // Fix for Issue #108: Avoid dangling pointer from temporary String.c_str()
+            // The displayMqttEntryMenu function does not use currentValue for display during input,
+            // but passing a dangling pointer is bad practice.
+            // Convert mqttPort to string into a static buffer that persists.
+            snprintf(mqttPortDisplayBuffer, sizeof(mqttPortDisplayBuffer), "%d", mqttPort);
+            displayMqttEntryMenu("MQTT Port:", mqttPortDisplayBuffer, false, true, 5); 
+            break;
         case MQTT_USER_ENTRY:       displayMqttEntryMenu("MQTT User:", mqttUser, false, false, sizeof(mqttUser)-1); break;
         case MQTT_PASS_ENTRY:       displayMqttEntryMenu("MQTT Pass:", mqttPassword, true, false, sizeof(mqttPassword)-1); break;
         case MQTT_TOPIC_ENTRY:      displayMqttEntryMenu("MQTT Topic:", mqttBaseTopic, false, false, sizeof(mqttBaseTopic)-1); break;
