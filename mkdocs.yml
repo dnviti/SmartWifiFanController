@@ -1,0 +1,57 @@
+# mkdocs.yml
+site_name: SmartWifiFanController Docs
+site_url: https://dnviti.github.io/SmartWifiFanController/
+repo_url: https://github.com/dnviti/SmartWifiFanController
+repo_name: dnviti/SmartWifiFanController
+edit_uri: edit/main/docs/ # Or your default branch if not main
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Introduction: 01-introduction.md
+  - Hardware: 02-hardware.md
+  - Software: 03-software.md
+  - Setup and Installation: 04-setup-and-installation.md
+  - Usage Guide: 05-usage-guide.md
+  - Technical Details: 06-technical-details.md
+  - Troubleshooting: 07-troubleshooting.md
+  - Future Enhancements: 08-future-enhancements.md
+
+# Optional: Add plugins here if needed
+# plugins:
+#   - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - toc:
+      permalink: true

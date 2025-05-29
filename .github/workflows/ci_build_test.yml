@@ -1,0 +1,66 @@
+# .github/workflows/ci_build_test.yml
+name: CI Build & Test
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # If your project uses submodules
+
+      - name: Set up Python for PlatformIO
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # Or your preferred Python version for PlatformIO
+
+      - name: Install PlatformIO Core
+        run: pip install -U platformio
+
+      - name: Cache PlatformIO data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache # Cache downloaded toolchains and other PIO data
+          key: ${{ runner.os }}-platformio-${{ hashFiles('**/platformio.ini') }}-${{ hashFiles('**/lockfiles') }} # Adjust lockfiles if you use them
+          restore-keys: |
+            ${{ runner.os }}-platformio-${{ hashFiles('**/platformio.ini') }}-
+            ${{ runner.os }}-platformio-
+
+      # Set the PlatformIO build environment name.
+      # This should match an environment in your platformio.ini
+      - name: Set Build Environment Name
+        run: echo "PIO_ENV_NAME=esp32_fancontrol" >> $GITHUB_ENV
+
+      - name: Compile Firmware
+        run: platformio run -e ${{ env.PIO_ENV_NAME }}
+        env:
+          PLATFORMIO_CI_SRC: ${{ github.workspace }}
+
+      - name: Run Unit Tests
+        # This command assumes your tests are configured to run on the specified PIO environment.
+        # If your tests are host-based, you might use 'platformio test -e native' or similar.
+        run: platformio test -e ${{ env.PIO_ENV_NAME }}
+        env:
+          PLATFORMIO_CI_SRC: ${{ github.workspace }}
+
+      - name: Build Filesystem Image (SPIFFS)
+        run: platformio run -e ${{ env.PIO_ENV_NAME }} --target buildfs
+        env:
+          PLATFORMIO_CI_SRC: ${{ github.workspace }}

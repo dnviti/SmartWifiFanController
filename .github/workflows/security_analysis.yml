@@ -1,0 +1,90 @@
+# .github/workflows/security_analysis.yml
+name: Security Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  security_scan:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read       # For actions/checkout
+      contents: read      # For actions/checkout and codeql-action/upload-sarif
+      security-events: write # For codeql-action/upload-sarif to upload results to GitHub Security tab
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history for all branches and tags.
+          # Required for CodeQL analysis and TruffleHog to scan full history.
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: cpp # Specify C/C++ for analysis
+          # Optional: Add queries for specific security concerns
+          # queries: +security-extended, +security-and-quality
+
+      # It's often beneficial for CodeQL to observe a build.
+      # PlatformIO setup and a dummy build can help CodeQL create a more accurate database.
+      - name: Set up Python for PlatformIO
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install PlatformIO Core
+        run: pip install -U platformio
+
+      # Optional: Attempt a build to help CodeQL.
+      # If your project has multiple environments, specify the one you want CodeQL to analyze.
+      # We can make this step not fail the workflow if the build itself has issues unrelated to security.
+      - name: Attempt PlatformIO Build for CodeQL context
+        run: |
+          # Replace 'esp32_fancontrol' with your actual default PlatformIO environment if different
+          platformio run -e esp32_fancontrol || echo "Build failed, but continuing for CodeQL analysis."
+        env:
+          PLATFORMIO_CI_SRC: ${{ github.workspace }}
+        continue-on-error: true # Don't fail the security scan if the build itself fails
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:cpp" # Category for SARIF results
+
+      # Secret Scanning with TruffleHog
+      # Scans the entire history for secrets.
+      - name: Run TruffleHog Secret Scanner
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }} # Scan changes against the default branch
+          head: HEAD
+          extra_args: --debug --json # Output in JSON for potential future processing, debug for more info
+        # If you want the workflow to fail on found secrets, you might need to parse the output
+        # or use a version of TruffleHog action that supports failing on findings.
+        # For now, it will print findings to the log.
+        continue-on-error: true # Set to false to fail workflow if secrets are found
+
+      # Dependency Review - Runs only on Pull Requests
+      # Checks for vulnerabilities in dependencies introduced or changed in the PR.
+      # Requires the Dependency Graph to be enabled for the repository.
+      - name: Dependency Review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          # You can specify severity thresholds to fail the check
+          # fail-on-severity: critical # Options: low, moderate, high, critical
+          # deny-licenses: GPL-2.0, AGPL-3.0 # Example: specify licenses to deny
+          comment-summary-in-pr: true # Post a summary in the PR
+

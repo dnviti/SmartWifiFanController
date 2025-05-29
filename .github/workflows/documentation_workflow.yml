@@ -1,0 +1,49 @@
+# .github/workflows/documentation_workflow.yml
+name: Build and Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main # Or your primary development branch
+    paths:
+      - 'docs/**.md'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '.github/workflows/documentation_workflow.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to push to gh-pages branch
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # Or your preferred Python version
+
+      - name: Install MkDocs and dependencies
+        run: |
+          pip install -r requirements-docs.txt
+
+      - name: Build Documentation
+        run: mkdocs build --clean --strict # --strict will fail on warnings
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site # Default build output directory for MkDocs
+          # publish_branch: gh-pages # Default branch for deployment
+          # user_name: 'github-actions[bot]' # Default user for commit
+          # user_email: 'github-actions[bot]@users.noreply.github.com' # Default email
+          # commit_message: 'Deploy documentation to gh-pages' # Default commit message
+          # allow_empty_commit: false # Default
+          # force_orphan: false # Default (set to true to create a new history for gh-pages each time)
+          # cname: docs.example.com # If you use a custom domain
