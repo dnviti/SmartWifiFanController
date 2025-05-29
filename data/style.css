@@ -22,6 +22,13 @@ h1 {
     text-align: center; 
     margin-bottom: 20px; 
 }
+h2 {
+    color: #34495e;
+    margin-top: 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #ecf0f1;
+    padding-bottom: 10px;
+}
 p { 
     margin: 8px 0; 
     line-height: 1.6; 
@@ -111,6 +118,48 @@ input[type="range"] {
     color: #888; 
     font-style: italic; 
 }
+
+/* MQTT Configuration Styles */
+.mqtt-config-container {
+    margin-top: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #fdfdfd;
+}
+.config-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap; /* Allow wrapping for smaller screens */
+}
+.config-item label {
+    min-width: 150px; /* Adjust as needed */
+    margin-right: 10px;
+    font-weight: 500;
+    color: #555;
+}
+.config-item input[type="text"],
+.config-item input[type="number"],
+.config-item input[type="password"] {
+    flex-grow: 1; /* Allow input to take available space */
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-width: 200px; /* Minimum width for inputs */
+}
+.config-item input[type="checkbox"] {
+    margin-right: 5px;
+    transform: scale(1.2); /* Make checkbox slightly larger */
+}
+.reboot-notice {
+    font-size: 0.9em;
+    color: #e67e22; /* Orange warning color */
+    margin-top: 10px;
+    font-style: italic;
+}
+
+
 .hidden { 
     display: none !important; 
 }

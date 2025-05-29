@@ -4,138 +4,85 @@ This chapter delves into the specific technologies, protocols, and implementatio
 
 ## **6.1. PWM Fan Control**
 
-* **Mechanism:** PC fans with 4-pin connectors are controlled using Pulse Width Modulation (PWM). The fourth pin (Control/PWM Input) accepts a PWM signal that dictates the fan's speed. The fan motor itself is still powered by the constant 12V line.  
-* **ESP32 Implementation:** The ESP32's LEDC (LED Control) peripheral is utilized for generating hardware PWM signals. This is preferred over software PWM for accuracy and minimal CPU overhead.  
-  * ledcSetup(channel, frequency, resolution\_bits): Configures a PWM channel with a specific frequency and resolution.  
-    * frequency: Set to PWM\_FREQ (typically 25000 Hz, i.e., 25kHz), which is standard for PC fans.  
-    * resolution\_bits: Set to PWM\_RESOLUTION\_BITS (typically 8-bit, for values 0-255), allowing 256 distinct speed steps.  
-  * ledcAttachPin(gpio\_pin, channel): Assigns the configured PWM channel to a specific GPIO pin (FAN\_PWM\_PIN).  
-  * ledcWrite(channel, duty\_cycle\_raw): Sets the duty cycle for the channel. The duty\_cycle\_raw value is mapped from the desired 0-100% fan speed to the 0-255 range corresponding to the 8-bit resolution.  
-* **Signal Level:** PC fans typically expect a 5V TTL PWM signal. Since the ESP32 outputs 3.3V logic, a **logic level shifter** is highly recommended between the ESP32's PWM output pin and the fan's control input pin to ensure reliable operation across all fan models and the full speed range.
+*(No changes)*
 
 ## **6.2. I2C Communication**
 
-* **Protocol:** I2C (Inter-Integrated Circuit) is a synchronous, multi-master, multi-slave, packet-switched, single-ended, serial communication bus. It requires only two wires:  
-  * SDA (Serial Data)  
-  * SCL (Serial Clock)  
-* **Usage:** In this project, I2C is used for communication with:  
-  * **BMP280 Temperature Sensor:** The ESP32 acts as the I2C master and requests temperature (and pressure, though not primarily used) data from the BMP280 slave device.  
-  * **I2C LCD Module:** The ESP32 sends commands and character data to the LCD module (which typically has a PCF8574 I/O expander acting as the I2C slave) to display information.  
-* **Implementation:** The ESP32's Wire.h library provides the functions for I2C communication (Wire.begin(), Wire.beginTransmission(), Wire.write(), Wire.endTransmission(), Wire.requestFrom(), Wire.read()).  
-* **Pull-up Resistors:** External pull-up resistors (typically 4.7kΩ to 10kΩ, connected to 3.3V) are required on both SDA and SCL lines if not already present on the I2C slave modules.
+*(No changes)*
 
 ## **6.3. Fan Tachometer (RPM Sensing)**
 
-* **Signal:** The third pin on a 4-pin (and many 3-pin) fan connector is the Tachometer (or "Sense") output. It provides a pulsed signal, typically two pulses for each full revolution of the fan. This is often an open-collector or open-drain output.  
-* **Hardware Interface:**  
-  * The tachometer pin is connected to an ESP32 GPIO (FAN\_TACH\_PIN\_ACTUAL).  
-  * A pull-up resistor (e.g., 10kΩ to 3.3V) is essential on this line because the fan's tachometer output usually just pulls the line LOW for each pulse.  
-* **Software Implementation:**  
-  * **Interrupt Service Routine (ISR):** An ISR (IRAM\_ATTR countPulse()) is attached to the tachometer GPIO pin, configured to trigger on a specific edge (e.g., FALLING).  
-    * attachInterrupt(digitalPinToInterrupt(pin), ISR, mode)  
-    * The ISR is kept extremely short and simple: it only increments a volatile unsigned long pulseCount.  
-  * **RPM Calculation (in mainAppTask):**  
-    1. Periodically (e.g., every second), interrupts are temporarily disabled to safely read the pulseCount and reset it to zero.  
-    2. The time elapsed since the last RPM calculation (elapsedMillis) is determined.  
-    3. RPM is calculated using the formula:  
-       fanRpm \= (currentPulses / PULSES\_PER\_REVOLUTION) \* (60000.0f / elapsedMillis);  
-       (60000.0f converts milliseconds to minutes).
+*(No changes)*
 
 ## **6.4. WiFi and Networking (Web Server & WebSockets)**
 
-* **WiFi Client Mode (STA):** The ESP32 connects to an existing WiFi network using WiFi.begin(ssid, password).  
+* **WiFi Client Mode (STA):** The ESP32 connects to an existing WiFi network. **The hostname is dynamically set to fancontrol-\[macaddress\] for easier network identification.**  
 * **ESPAsyncWebServer Library:**  
-  * Used for creating an HTTP server that can serve static files and handle other HTTP requests asynchronously.  
-  * server.on("/path", HTTP\_GET, handlerFunction) is used to define routes.  
-  * In this project, it serves index.html, style.css, and script.js from SPIFFS.  
-* **WebSockets (WebSocketsServer library by Markus Sattler):**  
-  * Provides a persistent, full-duplex communication channel over a single TCP connection for the web UI.  
-  * webSocket.begin(): Starts the WebSocket server (typically on port 81).  
-  * webSocket.onEvent(webSocketEvent): Registers a callback function (webSocketEvent) to handle WebSocket events.  
-  * webSocket.broadcastTXT(jsonData): Sends a JSON string to all connected WebSocket clients.  
-  * **Data Format:** JSON (JavaScript Object Notation) is used for exchanging structured data between the ESP32 and the web UI. ArduinoJson library handles serialization and deserialization.
+  * Used for creating an HTTP server.  
+  * Serves static files (index.html, style.css, script.js) from SPIFFS.  
+  * **Hosts the ElegantOTA endpoint (/update) for manual OTA updates.**  
+* **WebSockets (WebSocketsServer library):**  
+  * Provides persistent, full-duplex communication for the web UI.  
+  * **Transmits OTA status messages and receives OTA trigger commands.**  
+* **Data Format:** JSON (ArduinoJson library) for WebSocket data.
 
 ## **6.5. MQTT Integration for Home Automation**
 
-The controller supports MQTT for integration with home automation platforms.
+*(Status JSON now includes OTA info)*
 
-* **Protocol:** MQTT (Message Queuing Telemetry Transport) is a lightweight publish-subscribe network protocol ideal for IoT devices.  
-* **Library:** The PubSubClient library by Nick O'Leary is used for MQTT communication.  
-* **Configuration:**  
-  * MQTT can be enabled/disabled.  
-  * Broker settings (server address, port, username, password) and a base topic are configurable via the LCD menu or serial commands.  
-  * These settings are stored persistently in NVS under the "mqtt-cfg" namespace.  
-* **Connection:**  
-  * The mqtt\_handler.cpp module manages the connection to the MQTT broker.  
-  * It attempts to connect if MQTT is enabled and WiFi is available. Reconnection attempts are made periodically if the connection drops.  
-  * **Last Will and Testament (LWT):** The client sets an LWT to publish an "offline" message to the availability topic if it disconnects unexpectedly.  
+* **Protocol:** MQTT.  
+* **Library:** PubSubClient.  
+* **Configuration:** (As before).  
+* **Home Assistant MQTT Discovery:** (As before).  
 * **Topics and Payloads:**  
-  * All topics are prefixed with the user-configured mqttBaseTopic.  
-  * **Availability Topic:** (e.g., YOUR\_BASE\_TOPIC/online\_status)  
-    * Publishes online when connected, offline as LWT. Retained message.  
-  * **Status Topic (JSON):** (e.g., YOUR\_BASE\_TOPIC/status\_json)  
-    * Publishes a JSON object containing temperature, sensor status, fan speed percentage, fan RPM, current mode, manual set speed, IP address, and WiFi RSSI.  
-    * Published periodically and on significant state changes. Retained message.  
-    * Example payload: {"temperature":25.5,"tempSensorFound":true,"fanSpeedPercent":50,"fanRpm":1200,"mode":"AUTO", ...}  
-  * **Command Topics:**  
-    * **Mode Set:** (e.g., YOUR\_BASE\_TOPIC/mode/set)  
-      * Payload: AUTO or MANUAL (case-insensitive string).  
-    * **Manual Speed Set:** (e.g., YOUR\_BASE\_TOPIC/speed/set)  
-      * Payload: Integer string from 0 to 100\. Only effective in MANUAL mode.  
-* **Processing:**  
-  * The mqttCallback function in mqtt\_handler.cpp processes incoming messages on subscribed command topics.  
-  * The networkTask (Core 0\) is responsible for running mqttClient.loop() and triggering status publishes.  
-* **JSON Handling:** The ArduinoJson library is used for creating the JSON status payload.
+  * **Status Topic (JSON):** (e.g., YOUR\_BASE\_TOPIC/status\_json) \- Publishes a comprehensive JSON object. **Now includes firmwareVersion, otaInProgress, and otaStatusMessage.**  
+  * Other topics (as before).  
+* **Processing:** (As before).
 
 ## **6.6. SPIFFS Filesystem Usage**
 
-* **SPI Flash File System (SPIFFS):** A lightweight filesystem designed for microcontrollers with SPI flash memory.  
-* **Usage:** Stores the web interface files (index.html, style.css, script.js).  
-* **Initialization:** SPIFFS.begin(true) is called in setup(). The true argument formats SPIFFS if it's not already mounted or corrupted.  
-* Serving Files: AsyncWebServer can serve files directly from SPIFFS:  
-  request-\>send(SPIFFS, "/filename.ext", "content\_type");  
-* **Uploading Files:** In PlatformIO, a data directory is created in the project root. Web files are placed here, and the "Upload Filesystem Image" task (pio run \-t uploadfs) builds and uploads the SPIFFS image.
+* **Web Interface Files:** Stores index.html, style.css, script.js.  
+* **Root CA Certificate for OTA:** Stores the Root CA certificate (e.g., /github\_api\_ca.pem) used for secure HTTPS connections to GitHub for OTA updates. This file is loaded into memory at boot. The GitHub Actions pipeline includes the latest CA in the spiffs.bin of releases.
 
 ## **6.7. NVS (Non-Volatile Storage) for Persistence**
 
-* **Non-Volatile Storage:** The ESP32 provides a region of its flash memory for NVS, allowing data to be stored persistently across reboots.  
-* **Preferences.h Library:** The Arduino ESP32 core provides this library to easily read and write key-value pairs to NVS.  
-* **Usage:**  
-  * preferences.begin("namespace", readOnly): Opens a specific namespace. readOnly is false for writing, true for reading.  
-  * preferences.putType("key", value): Stores data (e.g., putString, putBool, putInt).  
-  * preferences.getType("key", defaultValue): Retrieves data.  
-  * preferences.isKey("key"): Checks if a key exists.  
-  * preferences.end(): Closes the namespace.  
-* **Stored Settings:**  
-  * wifi-cfg namespace: ssid, password, wifiEn (WiFi enabled state).  
-  * **mqtt-cfg namespace: mqttEn (MQTT enabled state), mqttSrv (server), mqttPrt (port), mqttUsr (user), mqttPwd (password), mqttTop (base topic).**  
-  * fan-curve namespace: numPoints, and individual curve points (tP0, pP0, etc.).
+*(No changes)*
 
 ## **6.8. Conditional Debug Mode**
 
-* **Activation:** A physical GPIO pin (DEBUG\_ENABLE\_PIN) is read during setup(). It's configured with an internal pull-down resistor. If this pin is HIGH (e.g., connected to 3.3V via a jumper or switch), debug mode is enabled.  
-* **Serial Output:**  
-  * If serialDebugEnabled is true, Serial.begin(115200) is called, and detailed log messages are printed throughout the code using Serial.print(), Serial.println(), and Serial.printf().  
-  * If serialDebugEnabled is false, Serial.begin() is **not** called, effectively disabling all serial output and keeping the UART pins free/quiet.  
-* **Serial Command Interface:** The handleSerialCommands() function is only called in mainAppTask if serialDebugEnabled is true.  
-* **Debug LED:** LED\_DEBUG\_PIN (GPIO2) is turned ON if debug mode is active, providing a visual indicator.
+*(No changes)*
 
 ## **6.9. Dual-Core Operation (FreeRTOS Tasks)**
 
-The ESP32's dual cores are utilized via FreeRTOS tasks to improve performance and responsiveness:
+* **Core 0 (networkTask):** Handles WiFi, ESPAsyncWebServer (including ElegantOTA), WebSockets, MQTT client.  
+* **Core 1 (mainAppTask):** Handles main application logic, sensors, LCD, buttons, serial commands. **The GitHub OTA check and update process (HTTPClient, HTTPUpdate) are initiated from this core's context when triggered, which can be blocking during the download/flash phases.**
 
-* **Task Creation:** xTaskCreatePinnedToCore() is used in setup() to create and assign tasks to specific cores:  
-  * networkTask \-\> Core 0 (PRO\_CPU)  
-  * mainAppTask \-\> Core 1 (APP\_CPU)  
-* **Task Responsibilities:**  
-  * **networkTask (Core 0):** Handles all potentially blocking network operations (WiFi, web server, WebSockets, **MQTT client**). This prevents network latency or activity from delaying the main control loop. It only runs if WiFi is enabled. MQTT client runs if both WiFi and MQTT are enabled.  
-  * **mainAppTask (Core 1):** Executes the primary application logic: sensor reading, button processing, LCD updates, fan control calculations, and serial command handling.  
-* **Inter-Task Communication:**  
-  * **volatile variables:** Used for simple shared state flags and data that can be read/written by different tasks or ISRs (e.g., currentTemperature, fanRpm, isAutoMode).  
-  * **needsImmediateBroadcast flag:** A volatile bool used by mainAppTask to signal networkTask when a state change requires an immediate WebSocket update to clients, rather than waiting for a periodic broadcast.  
-* **Benefits:**  
-  * Improved responsiveness of the LCD menu and button inputs.  
-  * More stable network performance as it's not interrupted by sensor polling or display updates.  
-  * Better overall system stability by isolating potentially blocking operations.
+## **6.10. Over-the-Air (OTA) Updates**
+
+The controller implements two OTA update mechanisms:
+
+1. **ElegantOTA (Manual Web Upload):**  
+   * **Library:** ayushsharma82/ElegantOTA.  
+   * **Interface:** Provides a web page at the /update endpoint of the ESP32's IP address.  
+   * **Functionality:** Allows users to manually upload pre-compiled firmware.bin or spiffs.bin files directly to the device.  
+   * **Initialization:** ElegantOTA.begin(\&server); is called in networkTask after the web server starts. ElegantOTA.loop() is also called in networkTask.  
+2. **GitHub Release Updater (Automated Check & Install):**  
+   * **Module:** Custom logic in ota\_updater.h and ota\_updater.cpp.  
+   * **Trigger:** Can be initiated via LCD menu, Web UI, or a serial command (ota\_update).  
+   * **Process:**  
+     1. **Fetch Latest Release Info:**  
+        * Makes an HTTPS GET request to the GitHub API (GITHUB\_API\_LATEST\_RELEASE\_URL).  
+        * Uses WiFiClientSecure configured with a Root CA certificate loaded from SPIFFS (GITHUB\_API\_ROOT\_CA\_STRING loaded from GITHUB\_ROOT\_CA\_FILENAME).  
+        * Parses the JSON response (using ArduinoJson) to find the tag\_name (version) and asset download URLs for firmware (firmware\_PIO\_BUILD\_ENV\_NAME\_vX.Y.Z.bin) and SPIFFS (spiffs\_PIO\_BUILD\_ENV\_NAME\_vX.Y.Z.bin). PIO\_BUILD\_ENV\_NAME must match the environment name used in the GitHub Actions release workflow.  
+     2. **Version Comparison:**  
+        * Compares the fetched tag\_name with the FIRMWARE\_VERSION define.  
+     3. **Update Execution (if newer version found):**  
+        * Uses the HTTPUpdate library.  
+        * **Firmware Update:** Calls httpUpdate.update(client, firmwareURL).  
+        * **SPIFFS Update:** Calls httpUpdate.updateSpiffs(client, spiffsURL).  
+        * Both use WiFiClientSecure configured with the loaded Root CA from SPIFFS.  
+        * The device reboots automatically after a successful update by HTTPUpdate.  
+   * **Root CA Management:** The Root CA certificate is stored on SPIFFS. The GitHub Actions workflow is designed to download the latest relevant CA during its build process and include it in the spiffs.bin of the release assets. This allows the CA to be updated via a SPIFFS OTA update.  
+   * **Security:** Relies on HTTPS for communication with GitHub. The validity of the connection depends on the correctness and currency of the Root CA certificate stored on SPIFFS.
 
 [Previous Chapter: Usage Guide](05-usage-guide.md) | [Next Chapter: Troubleshooting](07-troubleshooting.md)

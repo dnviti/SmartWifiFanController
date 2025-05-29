@@ -5,16 +5,29 @@
 #include "fan_control.h"     
 #include "display_handler.h" 
 #include "mqtt_handler.h"    // Added for MQTT
+#include <ElegantOTA.h>      // Added for OTA Updates
+#include <WiFi.h>            // Ensure WiFi is included for MAC address and hostname
 
 // --- Network Task (Core 0) ---
 void networkTask(void *pvParameters) {
     if(serialDebugEnabled) Serial.println("[TASK] Network Task started on Core 0.");
     unsigned long lastPeriodicBroadcastTime = 0;
     unsigned long lastMqttStatusPublishTime = 0;
-
+    unsigned long lastMqttCurvePublishTime = 0; // ADDED: For periodic curve publish
 
     // --- WiFi Connection Handling ---
     if (isWiFiEnabled) {
+        // Generate and set hostname before WiFi.begin()
+        uint8_t mac[6];
+        char hostname[32]; // "fancontrol-" is 11 chars, MAC is 12 chars, plus null terminator
+        WiFi.macAddress(mac);
+        sprintf(hostname, "fancontrol-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        
+        if(serialDebugEnabled) Serial.printf("[WiFi] Setting hostname to: %s\n", hostname);
+        if (!WiFi.setHostname(hostname)) {
+            if(serialDebugEnabled) Serial.println("[WiFi_ERR] Failed to set hostname.");
+        }
+
         if(serialDebugEnabled) { Serial.print("[WiFi] NetworkTask: Attempting connection to SSID: '"); Serial.print(current_ssid); Serial.println("'");}
         
         if (strlen(current_ssid) > 0 && strcmp(current_ssid, "YOUR_WIFI_SSID") != 0 && strcmp(current_ssid, "") != 0 ) {
@@ -35,63 +48,91 @@ void networkTask(void *pvParameters) {
     }
 
 
-    // --- Service Initialization (Websocket, MQTT) if WiFi is connected ---
+    // --- Service Initialization (Websocket, MQTT, OTA) if WiFi is connected ---
     if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
         if(serialDebugEnabled) { 
             Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
             Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());
+            Serial.print("[WiFi] NetworkTask: Hostname: "); Serial.println(WiFi.getHostname()); // Log the effective hostname
         }
         
         // Setup WebSockets
         setupWebServerRoutes(); 
         webSocket.begin();
         webSocket.onEvent(webSocketEvent);
-        server.begin(); // Start AsyncWebServer
+        
+        // Start AsyncWebServer
+        server.begin(); 
         if(serialDebugEnabled) Serial.println("[SYSTEM] HTTP server and WebSocket started on Core 0.");
+
+        // Initialize ElegantOTA
+        ElegantOTA.begin(&server);
+        // You can also set a custom ID for ElegantOTA if desired, which could include the hostname
+        // ElegantOTA.setID(hostname); // Optional: If you want ElegantOTA to display this ID
+        if(serialDebugEnabled) Serial.println("[SYSTEM] ElegantOTA started. Update endpoint: /update");
+
 
         // Setup MQTT if enabled
         if (isMqttEnabled) {
             setupMQTT(); // Initialize MQTT client, topics, server etc.
-            // Initial connection attempt will be handled in the loop by connectMQTT()
         } else {
             if(serialDebugEnabled) Serial.println("[MQTT] MQTT is disabled. Skipping MQTT setup in NetworkTask.");
         }
 
     } else { 
-        if(isWiFiEnabled && serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: WiFi Connection Failed or not attempted. Web/MQTT services may not be available.");
-        // If WiFi is disabled, this is normal.
+        if(isWiFiEnabled && serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: WiFi Connection Failed or not attempted. Web/MQTT/OTA services may not be available.");
     }
     
     // --- Main Loop for Network Task ---
     for(;;) {
         if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) { 
-            // WebSocket Loop
             webSocket.loop();
+            ElegantOTA.loop(); // Handles OTA requests, important for some versions/modes
             unsigned long currentTime = millis();
-            if (needsImmediateBroadcast || (currentTime - lastPeriodicBroadcastTime > 5000)) { 
+
+            // Combined broadcast/publish logic for immediate updates
+            if (needsImmediateBroadcast) { 
                 broadcastWebSocketData(); // Send data to web clients
-                if (isMqttEnabled) publishStatusMQTT(); // Also publish to MQTT
+                if (isMqttEnabled && mqttClient.connected()) {
+                    publishStatusMQTT(); 
+                    if (fanCurveChanged) { // Only publish curve if it actually changed
+                        publishFanCurveMQTT();
+                        fanCurveChanged = false; // Reset flag
+                        lastMqttCurvePublishTime = currentTime; // Update time of last curve publish
+                    }
+                }
                 needsImmediateBroadcast = false; 
-                lastPeriodicBroadcastTime = currentTime;
-                lastMqttStatusPublishTime = currentTime; // Align MQTT periodic publish
+                lastPeriodicBroadcastTime = currentTime; // Reset periodic timer
+                if (isMqttEnabled) lastMqttStatusPublishTime = currentTime; // Reset MQTT periodic timer
+            }
+            // Periodic WebSocket broadcast
+            else if (currentTime - lastPeriodicBroadcastTime > 5000) {
+                 broadcastWebSocketData();
+                 lastPeriodicBroadcastTime = currentTime;
             }
 
-            // MQTT Loop (connection, incoming messages, periodic publish)
+
+            // MQTT Loop and Periodic Publishing
             if (isMqttEnabled) {
                 loopMQTT(); // Handles connection, client.loop(), and reconnections
+                
                 // Periodic status publish if not covered by needsImmediateBroadcast
                 if (mqttClient.connected() && (currentTime - lastMqttStatusPublishTime > 30000)) { // e.g., every 30 seconds
                      publishStatusMQTT();
                      lastMqttStatusPublishTime = currentTime;
                 }
+                // ADDED: Periodic fan curve publish (less frequent)
+                if (mqttClient.connected() && (currentTime - lastMqttCurvePublishTime > 300000)) { // e.g., every 5 minutes
+                     publishFanCurveMQTT();
+                     lastMqttCurvePublishTime = currentTime;
+                }
             }
         } else if (isWiFiEnabled && WiFi.status() != WL_CONNECTED) {
             // Optional: Attempt to reconnect WiFi if it drops
-            // This could be a simple WiFi.begin() again, or a more robust handler.
-            // For now, MQTT will also disconnect if WiFi drops.
-            if (serialDebugEnabled) {
-                // Serial.println("[WiFi] NetworkTask: WiFi disconnected. Trying to reconnect...");
-                // WiFi.begin(current_ssid, current_password); // Simple reconnect attempt
+            // For now, MQTT will also disconnect if WiFi drops (handled in loopMQTT).
+            // ElegantOTA also requires WiFi.
+            if (serialDebugEnabled && millis() % 15000 < 50) { // Log occasionally
+                 Serial.println("[WiFi] NetworkTask: WiFi disconnected. Waiting for reconnection or config change. OTA/Web/MQTT unavailable.");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking

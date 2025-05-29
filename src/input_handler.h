@@ -2,11 +2,12 @@
 #define INPUT_HANDLER_H
 
 #include "config.h"
+#include "ota_updater.h" // Include for triggerOTAUpdateCheck
 
 void handleMenuInput();
 void handleSerialCommands();
-void performWiFiScan(); // Called by menu
-void attemptWiFiConnection(); // Called by menu and serial
-void disconnectWiFi(); // Called by menu and serial
+void performWiFiScan(); 
+void attemptWiFiConnection(); 
+void disconnectWiFi(); 
 
 #endif // INPUT_HANDLER_H
