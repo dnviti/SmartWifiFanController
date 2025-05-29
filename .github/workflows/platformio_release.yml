@@ -14,7 +14,7 @@ jobs:
     env:
       PIO_ENV: esp32_fancontrol # Your PlatformIO environment name from platformio.ini
       # Filename for the downloaded CA certificate
-      CA_CERT_FILENAME: "github_api_ca.pem" # Changed name for clarity
+      CA_CERT_FILENAME: "github_root_ca.pem"
       GITHUB_API_HOST: "api.github.com"
 
     steps:
@@ -93,15 +93,26 @@ jobs:
           echo "VERSION_TAG=${BRANCH_NAME}" >> $GITHUB_ENV
         shell: bash
 
-      - name: Determine Asset Names
+      - name: Determine Asset Names and Prepare Files
         id: asset_names
         run: |
+          # Define local shell variables for the asset names
           FIRMWARE_NAME="firmware_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
           SPIFFS_NAME="spiffs_${{ env.PIO_ENV }}_${{ env.VERSION_TAG }}.bin"
+
+          # Output these names to GITHUB_ENV so subsequent steps can use them
           echo "FIRMWARE_ASSET_NAME=${FIRMWARE_NAME}" >> $GITHUB_ENV
           echo "SPIFFS_ASSET_NAME=${SPIFFS_NAME}" >> $GITHUB_ENV
-          cp .pio/build/${{ env.PIO_ENV }}/firmware.bin ${{ env.FIRMWARE_ASSET_NAME }}
-          cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin ${{ env.SPIFFS_ASSET_NAME }}
+
+          # Copy built files using the local shell variables
+          echo "Copying .pio/build/${{ env.PIO_ENV }}/firmware.bin to ${FIRMWARE_NAME}"
+          cp .pio/build/${{ env.PIO_ENV }}/firmware.bin "${FIRMWARE_NAME}"
+
+          echo "Copying .pio/build/${{ env.PIO_ENV }}/spiffs.bin to ${SPIFFS_NAME}"
+          cp .pio/build/${{ env.PIO_ENV }}/spiffs.bin "${SPIFFS_NAME}"
+
+          echo "Listing files in current directory:"
+          ls -l
         shell: bash
 
       - name: Create Release from Branch
@@ -116,7 +127,8 @@ jobs:
             The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
           draft: false
           prerelease: ${{ contains(env.VERSION_TAG, '-') }}
-          files: |
+          files:
+            | # These now refer to the variables set in GITHUB_ENV by the previous step
             ${{ env.FIRMWARE_ASSET_NAME }}
             ${{ env.SPIFFS_ASSET_NAME }}
         env:
@@ -144,7 +156,7 @@ jobs:
             The SPIFFS image includes the Root CA certificate for `${{ env.GITHUB_API_HOST }}` (downloaded during build) as `${{ env.CA_CERT_FILENAME }}`.
           draft: false
           prerelease: false
-          files: |
+          files: | # These now refer to the variables set in GITHUB_ENV
             ${{ env.FIRMWARE_ASSET_NAME }}
             ${{ env.SPIFFS_ASSET_NAME }}
         env:
