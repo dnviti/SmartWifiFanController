@@ -7,15 +7,33 @@ on:
       - main
       - develop
   pull_request:
+    types: [opened, synchronize, reopened] # Run on these PR events
     branches:
-      - main
-      - develop
-      - ai-fix/*
+      - develop # Only when the PR is targeting the 'develop' branch
   # Allow manual triggering
   workflow_dispatch:
 
 jobs:
   build_and_test:
+    # Conditional execution for the job:
+    # - Always run for 'push' to main/develop and 'workflow_dispatch'.
+    # - For 'pull_request' events:
+    #   - Ensure the PR is targeting the 'develop' branch.
+    #   - Ensure the source branch (head_ref) matches one of the AI's GitFlow patterns.
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.base_ref == 'develop' &&
+        (
+          startsWith(github.head_ref, 'bugfix/ai-issue-') ||
+          startsWith(github.head_ref, 'feature/ai-issue-') ||
+          startsWith(github.head_ref, 'docs/ai-issue-') ||
+          startsWith(github.head_ref, 'refactor/ai-issue-') ||
+          startsWith(github.head_ref, 'fix/ai-issue-')
+        )
+      )
     runs-on: ubuntu-latest
 
     steps:
