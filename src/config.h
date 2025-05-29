@@ -17,7 +17,7 @@
 #include <SPIFFS.h>       // For loading CA from SPIFFS
 
 // --- Firmware Version ---
-#define FIRMWARE_VERSION "0.1.1" // Define firmware version
+#define FIRMWARE_VERSION "0.1.2" // Define firmware version
 #define PIO_BUILD_ENV_NAME "esp32_fancontrol" // MUST MATCH 'PIO_ENV' in GitHub Actions release.yml
 
 // --- GitHub OTA Configuration ---
