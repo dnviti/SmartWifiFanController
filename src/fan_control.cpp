@@ -1,5 +1,6 @@
 #include "fan_control.h"
 #include "config.h" // For global variables
+#include <cmath> // For roundf
 
 void setDefaultFanCurve() {
     numCurvePoints = 5;
@@ -25,7 +26,8 @@ int calculateAutoFanPWMPercentage(float temp) {
             float pwmRange = pwmPercentagePoints[i+1] - pwmPercentagePoints[i];
             if (tempRange <= 0) return pwmPercentagePoints[i]; 
             float tempOffset = temp - tempPoints[i];
-            int calculatedPwm = pwmPercentagePoints[i] + (tempOffset / tempRange) * pwmRange;
+            // Apply explicit rounding as per issue #104
+            int calculatedPwm = pwmPercentagePoints[i] + static_cast<int>(roundf((tempOffset / tempRange) * pwmRange));
             return calculatedPwm;
         }
     }
