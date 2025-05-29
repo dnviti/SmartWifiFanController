@@ -27,7 +27,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # CRITICAL: Store your Gemini API Key as a secret
-      TARGET_BRANCH: main # Or your development branch like 'develop'
+      TARGET_BRANCH: develop # Updated: Target branch for Pull Requests
       GEMINI_MODEL: "gemini-2.5-pro-preview-05-06" 
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }} 
-          fetch-depth: 0 
+          fetch-depth: 0 # Fetch all history so branches can be managed properly
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -72,7 +72,7 @@ jobs:
           GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro-preview-05-06')
           GH_TOKEN = os.getenv('GH_TOKEN')
           REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO') 
-          TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'main')
+          TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'develop') # Updated default in script to match common practice
           GIT_COMMIT_USER_NAME = os.getenv('GIT_COMMIT_USER_NAME')
           GIT_COMMIT_USER_EMAIL = os.getenv('GIT_COMMIT_USER_EMAIL')
           
@@ -84,16 +84,18 @@ jobs:
           DIRECTORIES_TO_SCAN = ['src', 'test', 'data'] 
           # File extensions to include (add more as needed)
           RELEVANT_EXTENSIONS = ['*.cpp', '*.h', '*.ino', '*.py', '*.js', '*.html', '*.css', '*.md', '*.yml', '*.json', '*.txt', '*.csv', '*.S']
-          # Max characters for the entire code context (to prevent overly large prompts)
-          # Gemini 1.5 Pro has a 1M token limit. 1 token ~ 4 chars. So ~4M chars.
-          # Let's set a more conservative limit for the raw text here, e.g., 2MB of characters.
-          # You'll need to tune this based on your project and API limits.
           MAX_CONTEXT_CHARS = 2 * 1024 * 1024 # 2MB
 
           if not GEMINI_API_KEY:
               print("Error: GEMINI_API_KEY environment variable not set.")
               sys.exit(1)
-          # ... (other environment variable checks) ...
+          if not GH_TOKEN: # Check for GH_TOKEN
+              print("Error: GH_TOKEN environment variable not set.")
+              sys.exit(1)
+          if not REPO_NWO: # Check for REPO_NWO
+              print("Error: GITHUB_REPOSITORY_NWO environment variable not set.")
+              sys.exit(1)
+
 
           genai.configure(api_key=GEMINI_API_KEY)
           g = Github(GH_TOKEN)
@@ -105,7 +107,6 @@ jobs:
 
           # --- Helper Functions ---
           def get_issues_to_process():
-              # ... (same as before) ...
               issues_to_process = []
               if ISSUE_NUMBER_INPUT:
                   try:
@@ -178,7 +179,6 @@ jobs:
               return full_context
 
           def call_gemini_api(prompt_text):
-              # ... (same as before, ensure it can handle large prompts if MAX_CONTEXT_CHARS is large) ...
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -201,7 +201,6 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
-              # ... (same placeholder as before, needs significant development) ...
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
@@ -215,7 +214,7 @@ jobs:
                           continue
                       
                       lines = block.split('\n', 1)
-                      if not lines or len(lines) < 2: # Ensure there's content after filename
+                      if not lines or len(lines) < 2: 
                           continue
                       
                       file_path_to_change = lines[0].strip()
@@ -226,14 +225,13 @@ jobs:
                           print(f"  Skipping block for '{file_path_to_change}', no code block found after filename.")
                           continue
                       
-                      # Extract content between the first pair of ```
                       try:
                           code_section = lines[1].split("```", 2)
-                          if len(code_section) < 2: # Should have content before, between, and after ```
+                          if len(code_section) < 2: 
                               print(f"  Skipping block for '{file_path_to_change}', could not clearly parse code block (not enough ```).")
                               continue
                           
-                          code_content_with_lang = code_section[1] # Content is between the first pair
+                          code_content_with_lang = code_section[1] 
                       except IndexError:
                           print(f"  Skipping block for '{file_path_to_change}', error splitting by ```.")
                           continue
@@ -241,7 +239,7 @@ jobs:
                       actual_code = ""
                       if '\n' in code_content_with_lang:
                           first_code_line, rest_of_code_block = code_content_with_lang.split('\n', 1)
-                          if first_code_line.strip().isalnum() and len(first_code_line.strip()) <= 10: # Simple lang check
+                          if first_code_line.strip().isalnum() and len(first_code_line.strip()) <= 10: 
                               actual_code = rest_of_code_block
                           else:
                               actual_code = code_content_with_lang 
@@ -252,7 +250,7 @@ jobs:
                       if dir_name: 
                           os.makedirs(dir_name, exist_ok=True)
                           
-                      with open(file_path_to_change, "w") as f:
+                      with open(file_path_to_change, "w", encoding='utf-8') as f: # Added encoding
                           f.write(actual_code.strip() + "\n") 
                       print(f"  Applied changes to: {file_path_to_change}")
                       applied_changes = True
@@ -266,7 +264,6 @@ jobs:
               return applied_changes
 
           def run_git_command(command_list, ignore_error=False):
-              # ... (same as before) ...
               try:
                   print(f"Running git command: {' '.join(command_list)}")
                   result = subprocess.run(command_list, check=not ignore_error, capture_output=True, text=True)
@@ -286,9 +283,8 @@ jobs:
 
           # --- Main Processing Logic ---
           def main():
-              # ... (setup and issue fetching same as before) ...
               print(f"Starting AI Issue Resolver for repository: {REPO_NWO}")
-              print(f"Target branch for PRs: {TARGET_BRANCH}")
+              print(f"Target branch for PRs: {TARGET_BRANCH}") # This will now be 'develop'
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
 
               issues = get_issues_to_process()
@@ -300,33 +296,31 @@ jobs:
               if original_branch_or_commit == "HEAD": 
                   original_branch_or_commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
 
-              # Get the full codebase context ONCE before looping through issues if it's static per run
-              # If context needs to be dynamic per issue, move this inside the loop
               full_codebase_prompt_context = get_entire_codebase_context()
-
 
               for issue in issues:
                   print(f"\nProcessing Issue #{issue.number}: {issue.title}")
                   
                   branch_name = f"ai-fix/issue-{issue.number}"
                   
+                  # Ensure TARGET_BRANCH (e.g. 'develop') exists locally and is up-to-date
+                  run_git_command(["git", "fetch", "origin", TARGET_BRANCH])
                   run_git_command(["git", "checkout", TARGET_BRANCH])
-                  run_git_command(["git", "pull", "origin", TARGET_BRANCH]) 
+                  run_git_command(["git", "reset", "--hard", f"origin/{TARGET_BRANCH}"]) # Ensure it's same as remote
+                  
                   run_git_command(["git", "branch", "-D", branch_name], ignore_error=True) 
                   
-                  if not run_git_command(["git", "checkout", "-b", branch_name, f"origin/{TARGET_BRANCH}"]):
+                  if not run_git_command(["git", "checkout", "-b", branch_name, TARGET_BRANCH]): # Create from local TARGET_BRANCH
                       print(f"Failed to create or checkout branch {branch_name}. Skipping issue.")
                       run_git_command(["git", "checkout", original_branch_or_commit]) 
                       continue 
 
-                  # No longer calling get_relevant_code_context per issue, using full_codebase_prompt_context
-                  
                   prompt = (
                       f"You are an expert software developer tasked with fixing a GitHub issue for the repository '{REPO_NWO}'.\n"
                       f"Issue Number: #{issue.number}\n"
                       f"Issue Title: {issue.title}\n"
                       f"Issue Description:\n{issue.body if issue.body else 'No description provided.'}\n\n"
-                      f"The following is the content of the project's relevant source files:\n{full_codebase_prompt_context}\n\n" # Use the full context
+                      f"The following is the content of the project's relevant source files:\n{full_codebase_prompt_context}\n\n"
                       f"Your task is to provide the necessary code changes to resolve this issue based on the provided codebase and issue details.\n"
                       f"Output ONLY the complete new content for each file that needs to be modified.\n"
                       f"Format your response strictly as follows for EACH modified file:\n"
@@ -339,7 +333,6 @@ jobs:
                       f"If no code changes are needed, or if you cannot resolve the issue, respond with ONLY the text: NO_CHANGES_NEEDED\n"
                   )
                   
-                  # ... (rest of the main loop for AI call, parsing, git ops, PR creation is the same) ...
                   ai_response = call_gemini_api(prompt)
                   
                   if ai_response and "NO_CHANGES_NEEDED" not in ai_response :
@@ -375,13 +368,13 @@ jobs:
                               )
                               pr_command = [
                                   "gh", "pr", "create",
-                                  "--base", TARGET_BRANCH,
+                                  "--base", TARGET_BRANCH, # This will now be 'develop'
                                   "--head", branch_name,
                                   "--title", pr_title,
                                   "--body", pr_body
                               ]
                               try:
-                                  print(f"Creating PR for branch {branch_name}...")
+                                  print(f"Creating PR for branch {branch_name} against {TARGET_BRANCH}...")
                                   pr_result = subprocess.run(pr_command, check=True, capture_output=True, text=True)
                                   print(f"Successfully created PR for issue #{issue.number}: {pr_result.stdout.strip()}")
                               except subprocess.CalledProcessError as e:
