@@ -18,21 +18,19 @@ on:
 
 permissions:
   contents: write      # To create branches, commit, push
-  issues: read         # To read issues
   pull-requests: write # To create pull requests
+  issues: write        # To read issues and write comments
 
 jobs:
   resolve_issues_with_ai:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # CRITICAL: Store your Gemini API Key as a secret
-      TARGET_BRANCH: develop # Or your development branch like 'develop'
-      GEMINI_MODEL: "gemini-2.5-pro-preview-05-06" # Or "gemini-2.5-pro" if available via API and you have access
-      # User and email for AI commits
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+      TARGET_BRANCH: develop 
+      GEMINI_MODEL: "gemini-2.5-pro-preview-05-06" 
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
-      # Repository NWO (name with owner)
       GITHUB_REPOSITORY_NWO: ${{ github.repository }}
 
     steps:
@@ -40,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }} 
-          fetch-depth: 0 # Fetch all history so branches can be managed properly
+          fetch-depth: 0 
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,8 +48,8 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PyGithub requests google-generativeai # Add other necessary libraries
-          sudo apt-get update && sudo apt-get install -y gh # GitHub CLI
+          pip install PyGithub requests google-generativeai 
+          sudo apt-get update && sudo apt-get install -y gh 
 
       - name: Create Script Directory
         run: mkdir -p .github/scripts
@@ -60,35 +58,39 @@ jobs:
         run: |
           cat << 'EOF' > .github/scripts/ai_issue_processor.py
           # Conceptual Python Script: .github/scripts/ai_issue_processor.py
-          # This script needs to be fully developed.
           import os
           import sys
           import json
           import time
-          from github import Github, GithubException
+          from github import Github, GithubException, UnknownObjectException
           import google.generativeai as genai
           import subprocess
+          import fnmatch 
 
           # --- Configuration ---
           GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-          GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-1.5-pro-latest') # Default if not set
+          GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro-preview-05-06')
           GH_TOKEN = os.getenv('GH_TOKEN')
-          REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO') # e.g., "owner/repo"
-          TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'main')
+          REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO') 
+          TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'develop') 
           GIT_COMMIT_USER_NAME = os.getenv('GIT_COMMIT_USER_NAME')
           GIT_COMMIT_USER_EMAIL = os.getenv('GIT_COMMIT_USER_EMAIL')
           
-          ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') # From workflow inputs
+          ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
           MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
+
+          DIRECTORIES_TO_SCAN = ['src', 'test', 'data'] 
+          RELEVANT_EXTENSIONS = ['*.cpp', '*.h', '*.ino', '*.py', '*.js', '*.html', '*.css', '*.md', '*.yml', '*.json', '*.txt', '*.csv', '*.S']
+          MAX_CONTEXT_CHARS = 2 * 1024 * 1024 
 
           if not GEMINI_API_KEY:
               print("Error: GEMINI_API_KEY environment variable not set.")
               sys.exit(1)
-          if not GH_TOKEN:
+          if not GH_TOKEN: 
               print("Error: GH_TOKEN environment variable not set.")
               sys.exit(1)
-          if not REPO_NWO:
+          if not REPO_NWO: 
               print("Error: GITHUB_REPOSITORY_NWO environment variable not set.")
               sys.exit(1)
 
@@ -97,7 +99,7 @@ jobs:
           try:
               repo = g.get_repo(REPO_NWO)
           except GithubException as e:
-              print(f"Error: Could not get repository '{REPO_NWO}'. Check token permissions and repository name. Details: {e}")
+              print(f"Error: Could not get repository '{REPO_NWO}'. Details: {e}")
               sys.exit(1)
 
           # --- Helper Functions ---
@@ -105,9 +107,9 @@ jobs:
               issues_to_process = []
               if ISSUE_NUMBER_INPUT:
                   try:
-                      issue = repo.get_issue(number=int(ISSUE_NUMBER_INPUT))
-                      if issue.state == 'open':
-                          issues_to_process.append(issue)
+                      issue_obj = repo.get_issue(number=int(ISSUE_NUMBER_INPUT)) # Renamed to issue_obj
+                      if issue_obj.state == 'open':
+                          issues_to_process.append(issue_obj)
                       else:
                           print(f"Issue #{ISSUE_NUMBER_INPUT} is not open. Skipping.")
                   except GithubException as e:
@@ -117,161 +119,178 @@ jobs:
               else:
                   open_issues = repo.get_issues(state='open', sort='created', direction='asc')
                   count = 0
-                  for issue in open_issues:
-                      # Add filtering logic here (e.g., labels, no assignee, no "ai-in-progress" label)
+                  for issue_obj in open_issues: # Renamed to issue_obj
                       if count < MAX_ISSUES_TO_PROCESS:
-                          # Check if a PR from an AI branch already exists for this issue
-                          branch_name = f"ai-fix/issue-{issue.number}"
+                          branch_name = f"ai-fix/issue-{issue_obj.number}"
                           try:
-                              repo.get_branch(branch=branch_name)
-                              print(f"Branch {branch_name} already exists for issue #{issue.number}. Skipping.")
-                              # Potentially check for open PRs from this branch too
+                              repo.get_git_ref(f"heads/{branch_name}")
+                              print(f"Remote branch {branch_name} already exists for issue #{issue_obj.number}. Skipping.")
                               continue 
-                          except GithubException: # Branch does not exist, good to proceed
+                          except UnknownObjectException: 
                               pass
+                          except GithubException as e: 
+                              print(f"Error checking remote branch {branch_name}: {e}. Proceeding cautiously.")
+                              pass 
                           
-                          issues_to_process.append(issue)
+                          issues_to_process.append(issue_obj)
                           count += 1
                       else:
                           break
               return issues_to_process
 
-          def get_relevant_code_context(issue_body, issue_title):
-              # ADVANCED: This is a placeholder for a sophisticated function.
-              # It would need to:
-              # 1. Parse the issue for filenames, function names, error messages.
-              # 2. Search the codebase for these references.
-              # 3. Potentially use embeddings or other AI techniques to find semantically relevant code.
-              # 4. Fetch the content of these files.
-              # For now, it might just return a generic message or try to fetch a few common files.
-              print(f"Fetching code context for issue: {issue_title}...")
-              context = "Relevant code context needs to be implemented. Consider these files:\n"
-              # Example: try to find files mentioned in the issue body
-              # This is a very naive approach
-              potential_files = []
-              for word in issue_body.split():
-                  if '.cpp' in word or '.h' in word or '.py' in word or '.js' in word or '.yml' in word:
-                       # Clean up potential punctuation
-                       cleaned_word = ''.join(filter(lambda x: x.isalnum() or x in ['.', '/', '_', '-'], word))
-                       if cleaned_word not in potential_files:
-                           potential_files.append(cleaned_word)
+
+          def get_entire_codebase_context():
+              print("Attempting to fetch entire codebase context from specified directories...")
+              full_context = "Full Codebase Context:\n"
+              current_chars = 0
+
+              for dir_path in DIRECTORIES_TO_SCAN:
+                  if not os.path.isdir(dir_path):
+                      print(f"  Warning: Directory '{dir_path}' not found in repository root. Skipping.")
+                      continue
+                  
+                  print(f"  Scanning directory: {dir_path}")
+                  for root, _, files in os.walk(dir_path):
+                      for filename in files:
+                          include_file = any(fnmatch.fnmatch(filename, pat) for pat in RELEVANT_EXTENSIONS)
+                          if include_file:
+                              file_path = os.path.join(root, filename)
+                              try:
+                                  with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                      content = f.read()
+                                  
+                                  file_entry = f"File: {file_path}\n---\n{content}\n---\n\n"
+                                  
+                                  if current_chars + len(file_entry) > MAX_CONTEXT_CHARS:
+                                      print(f"  Warning: Maximum context size ({MAX_CONTEXT_CHARS} chars) reached. Stopping file inclusion.")
+                                      full_context += "Context truncated due to size limits.\n"
+                                      return full_context
+                                  
+                                  full_context += file_entry
+                                  current_chars += len(file_entry)
+                              except Exception as e:
+                                  print(f"    Error reading file {file_path}: {e}")
               
-              for f_path in potential_files:
-                  try:
-                      # Ensure f_path is relative to repo root and not absolute
-                      if f_path.startswith('/'): f_path = f_path[1:]
-                      file_content = repo.get_contents(f_path).decoded_content.decode('utf-8')
-                      context += f"File: {f_path}\n---\n{file_content[:2000]}\n---\n" # Limit context size
-                      print(f"  Added context from: {f_path}")
-                  except GithubException:
-                      print(f"  Could not fetch file: {f_path}")
-                      pass # File might not exist or path is incorrect
-              if not potential_files:
-                  context += "No specific files identified in issue body. General project context might be needed.\n"
-              return context
+              if current_chars == 0:
+                  full_context += "No relevant files found in specified directories or directories do not exist.\n"
+              
+              print(f"Total characters in context: {current_chars}")
+              return full_context
 
           def call_gemini_api(prompt_text):
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-                  # IMPORTANT: Review Gemini API documentation for correct request structure,
-                  # safety settings, and generation config.
                   response = model.generate_content(
                       prompt_text,
                       generation_config=genai.types.GenerationConfig(
-                          # candidate_count=1, # Default is 1
-                          # max_output_tokens=8192, # Adjust as needed
-                          temperature=0.3, # Lower for more deterministic code fixes
-                      ),
-                      # safety_settings=[...], # Configure safety settings
+                          temperature=0.2, 
+                          max_output_tokens=8192 
+                      )
                   )
-                  # Assuming the response has a 'text' attribute or similar for the generated content.
-                  # This will vary based on the Gemini SDK version.
-                  if response.candidates and response.candidates[0].content.parts:
+                  if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
                       return response.candidates[0].content.parts[0].text
                   else:
                       print("Warning: Gemini API response structure not as expected or empty.")
-                      print(f"Full response: {response}")
+                      print(f"Full response parts: {response.parts if hasattr(response, 'parts') else 'N/A'}")
+                      print(f"Full candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
                       return None
               except Exception as e:
                   print(f"Error calling Gemini API: {e}")
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
-              # EXTREMELY COMPLEX: This function needs to:
-              # 1. Reliably parse the AI's response to identify filenames and new code content.
-              #    The AI must be prompted to provide output in a very specific, machine-parsable format.
-              #    Example format to ask for:
-              #    FILENAME: path/to/file.cpp
-              #    ```cpp
-              #    // new content for file.cpp
-              #    ```
-              #    FILENAME: path/to/another/file.h
-              #    ```cpp
-              #    // new content for file.h
-              #    ```
-              # 2. For each identified file:
-              #    a. Create directories if they don't exist.
-              #    b. Write the new content to the file, overwriting the old one.
-              #    c. OR, if the AI provides diffs/patches, apply them using `git apply`.
-              # 3. Return True if changes were successfully applied, False otherwise.
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
+              if not ai_response_text:
+                  print("  AI response is empty. No changes to apply.")
+                  return False
               try:
-                  # This is a conceptual parsing logic. You'll need robust parsing.
-                  # Example: Split by "FILENAME: " and then extract content between ```
-                  # This is highly fragile and depends on consistent AI output.
-                  
-                  # For demonstration, let's assume a simple single file change to README.md
-                  # In a real scenario, this would parse multiple files and their contents.
-                  if "README.md" in ai_response_text and "```" in ai_response_text: # Very basic check
-                      new_content_parts = ai_response_text.split("```")
-                      if len(new_content_parts) > 1:
-                          # Assuming code is in the second part after the first ```
-                          # and might have a language specifier like ```python
-                          code_block_content = new_content_parts[1]
-                          # Remove potential language specifier from the first line
-                          if '\n' in code_block_content:
-                              first_line, rest_of_code = code_block_content.split('\n', 1)
-                              if first_line.strip().isalnum(): # Likely a language specifier
-                                  actual_code = rest_of_code
-                              else:
-                                  actual_code = code_block_content
-                          else: # Single line code block or no language specifier
-                              actual_code = code_block_content
+                  print("  AI Response to parse (first 500 chars): " + ai_response_text[:500])
+                  file_blocks = ai_response_text.split("FILENAME: ")
+                  for block_idx, block in enumerate(file_blocks):
+                      if block_idx == 0 and not block.strip(): 
+                          continue
+                      if not block.strip():
+                          continue
+                      
+                      lines = block.split('\n', 1)
+                      if not lines or len(lines) < 2: 
+                          print(f"  Skipping block, not enough lines to get filename and content: {block[:100]}")
+                          continue
+                      
+                      file_path_to_change = lines[0].strip()
+                      if not file_path_to_change: 
+                          print(f"  Skipping block, filename is empty: {block[:100]}")
+                          continue
 
-                          with open("README.md", "a") as f: # Append for demo, real would overwrite
-                              f.write("\n# AI Suggested Change (Branch: " + current_branch_name + ")\n")
-                              f.write(actual_code.strip())
-                          print("  Applied dummy change to README.md")
-                          applied_changes = True
-                      else:
-                          print("  Could not parse code block from AI response for README.md.")
-                  else:
-                      print("  AI response did not contain expected format for README.md or any changes.")
+                      if "```" not in lines[1]:
+                          print(f"  Skipping block for '{file_path_to_change}', no code block (```) found after filename.")
+                          continue
+                      
+                      try:
+                          code_section_parts = lines[1].split("```", 2)
+                          if len(code_section_parts) < 2: 
+                              print(f"  Skipping block for '{file_path_to_change}', could not clearly parse code block (not enough ```).")
+                              continue
+                          
+                          code_content_with_lang = code_section_parts[1] 
+                      except IndexError:
+                          print(f"  Skipping block for '{file_path_to_change}', error splitting by ```.")
+                          continue
+
+                      actual_code = ""
+                      if '\n' in code_content_with_lang:
+                          first_code_line, rest_of_code_block = code_content_with_lang.split('\n', 1)
+                          if first_code_line.strip().isalnum() and len(first_code_line.strip()) <= 10 and len(first_code_line.strip()) > 0: 
+                              actual_code = rest_of_code_block
+                          else: 
+                              actual_code = code_content_with_lang 
+                      else: 
+                          actual_code = code_content_with_lang
+
+                      dir_name = os.path.dirname(file_path_to_change)
+                      if dir_name: 
+                          print(f"  Ensuring directory exists: {dir_name}")
+                          os.makedirs(dir_name, exist_ok=True)
+                          
+                      print(f"  Attempting to write to file: {file_path_to_change}")
+                      with open(file_path_to_change, "w", encoding='utf-8') as f: 
+                          f.write(actual_code.strip() + "\n") 
+                      print(f"  Successfully applied changes to: {file_path_to_change}")
+                      applied_changes = True
 
               except Exception as e:
-                  print(f"Error applying changes: {e}")
+                  print(f"Error during parsing or applying changes: {e}")
                   return False
               
               if not applied_changes:
-                  print("No changes were applied based on AI response.")
+                  print("No specific file changes were parsed and applied from AI response.")
               return applied_changes
 
-          def run_git_command(command_list):
+          def run_git_command(command_list, ignore_error=False, work_dir=None):
               try:
-                  print(f"Running git command: {' '.join(command_list)}")
-                  result = subprocess.run(command_list, check=True, capture_output=True, text=True)
-                  print(result.stdout)
-                  return True
+                  print(f"Running git command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
+                  result = subprocess.run(command_list, check=not ignore_error, capture_output=True, text=True, cwd=work_dir)
+                  stdout_clean = result.stdout.strip()
+                  stderr_clean = result.stderr.strip()
+                  if stdout_clean: print(f"STDOUT: {stdout_clean}")
+                  if stderr_clean: print(f"STDERR: {stderr_clean}")
+                  return True if result.returncode == 0 else False
               except subprocess.CalledProcessError as e:
-                  print(f"Git command failed: {e.stderr}")
+                  print(f"Git command failed: {' '.join(command_list)}")
+                  print(f"Return code: {e.returncode}")
+                  if e.stdout: print(f"STDOUT: {e.stdout.strip()}")
+                  if e.stderr: print(f"STDERR: {e.stderr.strip()}")
+                  return False
+              except FileNotFoundError:
+                  print(f"Error: git command not found. Ensure git is installed and in PATH.")
                   return False
 
           # --- Main Processing Logic ---
           def main():
               print(f"Starting AI Issue Resolver for repository: {REPO_NWO}")
-              print(f"Target branch for PRs: {TARGET_BRANCH}")
+              print(f"Target branch for PRs: {TARGET_BRANCH}") 
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
 
               issues = get_issues_to_process()
@@ -279,122 +298,145 @@ jobs:
                   print("No open issues found to process based on criteria.")
                   return
 
-              for issue in issues:
-                  print(f"\nProcessing Issue #{issue.number}: {issue.title}")
-                  
-                  # Optional: Add a label to indicate AI is working on it
-                  # try:
-                  #     issue.add_to_labels("ai-in-progress")
-                  # except GithubException as e:
-                  #     print(f"Could not add label to issue #{issue.number}: {e}")
+              original_branch_or_commit = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+              if original_branch_or_commit == "HEAD": 
+                  original_branch_or_commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+              print(f"Original branch/commit: {original_branch_or_commit}")
 
-                  branch_name = f"ai-fix/issue-{issue.number}"
+              full_codebase_prompt_context = get_entire_codebase_context()
+
+              for issue_obj in issues: # Renamed 'issue' to 'issue_obj' to avoid conflict with module
+                  print(f"\nProcessing Issue #{issue_obj.number}: {issue_obj.title}")
                   
-                  # Create and checkout new branch
-                  if not run_git_command(["git", "checkout", "-b", branch_name, f"origin/{TARGET_BRANCH}"]):
+                  branch_name = f"ai-fix/issue-{issue_obj.number}"
+                  
+                  print(f"Preparing TARGET_BRANCH ('{TARGET_BRANCH}')...")
+                  run_git_command(["git", "fetch", "origin", TARGET_BRANCH])
+                  run_git_command(["git", "checkout", TARGET_BRANCH])
+                  run_git_command(["git", "reset", "--hard", f"origin/{TARGET_BRANCH}"]) 
+                  
+                  print(f"Attempting to delete pre-existing local branch '{branch_name}' if any...")
+                  run_git_command(["git", "branch", "-D", branch_name], ignore_error=True) 
+                  
+                  print(f"Creating new local branch '{branch_name}' from '{TARGET_BRANCH}'...")
+                  if not run_git_command(["git", "checkout", "-b", branch_name, TARGET_BRANCH]): 
                       print(f"Failed to create or checkout branch {branch_name}. Skipping issue.")
-                      continue # Move to next issue
+                      run_git_command(["git", "checkout", original_branch_or_commit]) 
+                      continue 
 
-                  code_context = get_relevant_code_context(issue.body if issue.body else "", issue.title)
-                  
                   prompt = (
-                      f"You are an expert software developer tasked with fixing a GitHub issue.\n"
-                      f"Repository: {REPO_NWO}\n"
-                      f"Issue Number: #{issue.number}\n"
-                      f"Issue Title: {issue.title}\n"
-                      f"Issue Description:\n{issue.body if issue.body else 'No description provided.'}\n\n"
-                      f"Relevant Code Context (if any was found):\n{code_context}\n\n"
-                      f"Your task is to provide the necessary code changes to resolve this issue.\n"
-                      f"Please output the complete new content for each file that needs to be modified.\n"
-                      f"Format your response strictly as follows for each file:\n"
+                      f"You are an expert software developer tasked with fixing a GitHub issue for the repository '{REPO_NWO}'.\n"
+                      f"Issue Number: #{issue_obj.number}\n"
+                      f"Issue Title: {issue_obj.title}\n"
+                      f"Issue Description:\n{issue_obj.body if issue_obj.body else 'No description provided.'}\n\n"
+                      f"The following is the content of the project's relevant source files:\n{full_codebase_prompt_context}\n\n"
+                      f"Your task is to provide the necessary code changes to resolve this issue based on the provided codebase and issue details.\n"
+                      f"Output ONLY the complete new content for each file that needs to be modified.\n"
+                      f"Format your response strictly as follows for EACH modified file:\n"
                       f"FILENAME: path/to/your/file.ext\n"
-                      f"```[language_extension_optional]\n"
-                      f"// New, complete content for the file\n"
+                      f"```[optional_language_specifier_e.g.cpp]\n"
+                      f"// New, complete content for the file goes here\n"
                       f"```\n"
-                      f"If no code changes are needed, or if you cannot resolve the issue, please state that clearly.\n"
-                      f"Focus on providing only the modified file contents in the specified format."
+                      f"Ensure the file path is relative to the repository root (e.g., src/main.cpp, test/some_test.cpp).\n"
+                      f"If multiple files need changes, repeat the FILENAME and code block structure for each.\n"
+                      f"If no code changes are needed, or if you cannot resolve the issue, respond with ONLY the text: NO_CHANGES_NEEDED\n"
                   )
                   
                   ai_response = call_gemini_api(prompt)
                   
-                  if ai_response:
-                      print(f"AI Response for issue #{issue.number}:\n{ai_response[:500]}...") # Log snippet
+                  if ai_response and "NO_CHANGES_NEEDED" not in ai_response :
+                      print(f"AI Response for issue #{issue_obj.number} (first 500 chars):\n{ai_response[:500]}...") 
                       if parse_and_apply_changes(ai_response, branch_name):
-                          print(f"Code changes applied for issue #{issue.number}.")
-                          if not run_git_command(["git", "add", "."]):
-                              print(f"Failed to git add changes for issue #{issue.number}. Skipping PR creation.")
-                              run_git_command(["git", "checkout", TARGET_BRANCH]) # Go back to target branch
-                              run_git_command(["git", "branch", "-D", branch_name]) # Delete local branch
-                              continue
-
-                          commit_message = f"AI fix for issue #{issue.number}: {issue.title}"
-                          if not run_git_command(["git", "commit", "-m", commit_message]):
-                              print(f"Failed to git commit changes for issue #{issue.number}. Skipping PR creation.")
+                          print(f"Code changes applied for issue #{issue_obj.number}.")
+                          git_status_output = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
+                          if not git_status_output: 
+                              print(f"No actual file changes detected by git status after AI processing for issue #{issue_obj.number}. Skipping commit and PR.")
                               run_git_command(["git", "checkout", TARGET_BRANCH]) 
-                              run_git_command(["git", "branch", "-D", branch_name])
+                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
                               continue
 
-                          if not run_git_command(["git", "push", "-u", "origin", branch_name]):
-                              print(f"Failed to git push branch {branch_name} for issue #{issue.number}. Skipping PR creation.")
-                              # No need to delete local branch if push failed, but checkout target
+                          if not run_git_command(["git", "add", "."]):
+                              print(f"Failed to git add changes for issue #{issue_obj.number}. Cleaning up branch.")
+                              run_git_command(["git", "checkout", TARGET_BRANCH]) 
+                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True) 
+                              continue
+
+                          commit_message = f"AI fix for issue #{issue_obj.number}: {issue_obj.title}"
+                          if not run_git_command(["git", "commit", "-m", commit_message]):
+                              print(f"Failed to git commit changes for issue #{issue_obj.number}. Cleaning up branch.")
+                              run_git_command(["git", "checkout", TARGET_BRANCH]) 
+                              run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                              continue
+
+                          run_git_command(["git", "push", "origin", "--delete", branch_name], ignore_error=True)
+
+                          if not run_git_command(["git", "push", "-u", "origin", branch_name]): 
+                              print(f"Failed to git push branch {branch_name} for issue #{issue_obj.number}.")
                               run_git_command(["git", "checkout", TARGET_BRANCH])
                               continue
                               
                           if ALLOW_PR_CREATION:
-                              pr_title = f"AI Fix for Issue #{issue.number}: {issue.title}"
+                              pr_title = f"AI Fix for Issue #{issue_obj.number}: {issue_obj.title}"
                               pr_body = (
-                                  f"This PR was automatically generated by an AI assistant to address issue #{issue.number}.\n"
-                                  f"Please review the changes carefully.\n\n"
-                                  f"**Issue Details:**\nTitle: {issue.title}\n"
-                                  f"Link: {issue.html_url}\n\n"
-                                  f"**AI Suggestion Summary (first 500 chars):**\n```\n{ai_response[:500]}...\n```"
+                                  f"This PR was automatically generated by an AI assistant to address issue #{issue_obj.number}.\n"
+                                  f"**Please review the changes carefully.**\n\n"
+                                  f"**Issue Details:**\nTitle: {issue_obj.title}\n"
+                                  f"Link: {issue_obj.html_url}\n\n"
+                                  f"**AI Suggestion Summary (first 500 chars of response):**\n```\n{ai_response[:500]}...\n```\n\n"
+                                  f"Fixes #{issue_obj.number}" 
                               )
-                              # Use GitHub CLI to create PR
                               pr_command = [
                                   "gh", "pr", "create",
-                                  "--base", TARGET_BRANCH,
+                                  "--base", TARGET_BRANCH, 
                                   "--head", branch_name,
                                   "--title", pr_title,
                                   "--body", pr_body
                               ]
                               try:
-                                  print(f"Creating PR for branch {branch_name}...")
-                                  subprocess.run(pr_command, check=True, capture_output=True, text=True)
-                                  print(f"Successfully created PR for issue #{issue.number}.")
-                                  # Optionally, comment on the issue with the PR link
-                                  # issue.create_comment(f"AI attempted a fix. Please review PR: [link to PR]")
+                                  print(f"Creating PR for branch {branch_name} against {TARGET_BRANCH}...")
+                                  pr_result = subprocess.run(pr_command, check=True, capture_output=True, text=True)
+                                  pr_url = pr_result.stdout.strip()
+                                  print(f"Successfully created PR for issue #{issue_obj.number}: {pr_url}")
+                                  
+                                  # Add comment to the issue
+                                  comment_body = (
+                                      f"🤖 AI Assistant has attempted a fix for this issue.\n"
+                                      f"Please review the proposed changes in Pull Request: {pr_url}"
+                                  )
+                                  try:
+                                      issue_obj.create_comment(comment_body)
+                                      print(f"Successfully commented on issue #{issue_obj.number} with PR link.")
+                                  except GithubException as e_comment:
+                                      print(f"Failed to comment on issue #{issue_obj.number}: {e_comment}")
+
                               except subprocess.CalledProcessError as e:
-                                  print(f"Failed to create PR for issue #{issue.number}: {e.stderr}")
+                                  print(f"Failed to create PR for issue #{issue_obj.number}: {e.stderr.strip()}")
                           else:
-                              print(f"PR creation is disabled. Branch {branch_name} pushed for issue #{issue.number}. Manual PR needed.")
-                      else:
-                          print(f"No changes applied or error during application for issue #{issue.number}.")
-                  else:
-                      print(f"No response or error from AI for issue #{issue.number}.")
-
-                  # Clean up: checkout target branch, optionally delete local AI branch if no PR was made or if keeping it is not desired
-                  print(f"Cleaning up after processing issue #{issue.number}...")
-                  run_git_command(["git", "checkout", TARGET_BRANCH])
-                  # If you don't want to keep the local ai-fix branches after pushing or if no PR was made:
-                  # run_git_command(["git", "branch", "-D", branch_name])
+                              print(f"PR creation is disabled. Branch {branch_name} pushed for issue #{issue_obj.number}. Manual PR needed.")
+                      else: 
+                          print(f"No changes applied or error during application for issue #{issue_obj.number}.")
+                          run_git_command(["git", "checkout", TARGET_BRANCH]) 
+                          run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                  elif ai_response and "NO_CHANGES_NEEDED" in ai_response:
+                      print(f"AI indicated no changes needed for issue #{issue_obj.number}.")
+                      run_git_command(["git", "checkout", TARGET_BRANCH]) 
+                      run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
+                  else: 
+                      print(f"No response or error from AI for issue #{issue_obj.number}.")
+                      run_git_command(["git", "checkout", TARGET_BRANCH]) 
+                      run_git_command(["git", "branch", "-D", branch_name], ignore_error=True)
                   
-                  # Optional: Remove "ai-in-progress" label or add "ai-attempted"
-                  # try:
-                  #     if "ai-in-progress" in [label.name for label in issue.get_labels()]:
-                  #         issue.remove_from_labels("ai-in-progress")
-                  #     issue.add_to_labels("ai-fix-attempted")
-                  # except GithubException as e:
-                  #     print(f"Could not update labels for issue #{issue.number}: {e}")
-
-                  # Add a delay to avoid hitting API rate limits if processing multiple issues
-                  if MAX_ISSUES_TO_PROCESS > 1 and issues.index(issue) < len(issues) - 1:
+                  print(f"Finished processing issue #{issue_obj.number}.")
+                  
+                  if MAX_ISSUES_TO_PROCESS > 1 and issues.index(issue_obj) < len(issues) - 1 : # Use issue_obj here
                       print("Waiting for 60 seconds before processing next issue to avoid rate limits...")
                       time.sleep(60)
-
+              
+              print(f"Returning to original branch/commit: {original_branch_or_commit}")
+              run_git_command(["git", "checkout", original_branch_or_commit], ignore_error=True)
               print("AI Issue Resolver run finished.")
 
           if __name__ == "__main__":
-              # Configure git user for commits made by the action
               run_git_command(["git", "config", "--global", "user.name", GIT_COMMIT_USER_NAME])
               run_git_command(["git", "config", "--global", "user.email", GIT_COMMIT_USER_EMAIL])
               main()
@@ -402,8 +444,8 @@ jobs:
           chmod +x .github/scripts/ai_issue_processor.py
 
       - name: Run AI Issue Processor Script
-        env: # Pass workflow inputs to the script via environment variables
+        env: 
           INPUT_ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
           INPUT_MAX_ISSUES_TO_PROCESS: ${{ github.event.inputs.max_issues_to_process }}
           INPUT_ALLOW_PR_CREATION: ${{ github.event.inputs.allow_pr_creation }}
-        run: .github/scripts/ai_issue_processor.py
+        run: python .github/scripts/ai_issue_processor.py 
