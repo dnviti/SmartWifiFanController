@@ -10,12 +10,12 @@ on:
       issue_label:
         description: 'Optional: Process issues with this specific label (e.g., bug, enhancement, documentation, refactor). Leave blank for any.'
         required: false
-        default: ''
+        default: 'bug'
         type: string
       gemini_model_override: # New input for model override
         description: 'Optional: Override the default Gemini model (e.g., gemini-1.5-pro-latest). Default is gemini-2.5-flash-preview-05-20.'
         required: false
-        default: ''
+        default: 'gemini-2.5-flash-preview-05-20'
         type: string
       max_issues_to_process:
         description: 'Maximum number of open issues to attempt to process in this run'
