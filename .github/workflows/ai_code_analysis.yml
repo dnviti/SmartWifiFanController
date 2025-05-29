@@ -1,4 +1,4 @@
-name: AI Code Analysis
+name: AI Code Analysis (ChatGPT)
 on:
   pull_request:
     paths: # Specify paths to trigger the workflow on PRs
@@ -30,10 +30,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Ensure you install the necessary library for Gemini API
-          # For example, if using Google's official Python SDK:
-          pip install google-generativeai
-          # If using 'requests' for direct HTTP calls:
+          # Install the OpenAI Python library
+          pip install openai
+          # If you plan to make GitHub API calls directly for issues/comments:
           # pip install requests
           # Add any other dependencies your script might need
 
@@ -42,21 +41,8 @@ jobs:
         run: |
           echo "Determining files to analyze..."
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # Get files changed in this PR compared to the base branch
-            # Ensure the PR base and head are properly checked out if using git diff directly
-            # This example assumes the checkout action handles it for PR events.
-            # Using git diff with merge-base to handle cases where base has moved.
             MERGE_BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
             FILES=$(git diff --name-only $MERGE_BASE HEAD | grep -E '\.(cpp|h)$' | tr '\n' ' ')
-            # Alternative if the above is complex: use an action like tj-actions/changed-files
-            # For example:
-            # uses: tj-actions/changed-files@v41 # (Check for latest version)
-            # with:
-            #   files_yaml: |
-            #     source_files:
-            #       - '**/*.cpp'
-            #       - '**/*.h'
-            # echo "files_to_analyze=${{ steps.changed-files-yaml.outputs.source_files_changed_files }}" >> $GITHUB_OUTPUT
           else # For workflow_dispatch or other events, analyze all relevant files
             FILES=$(find . -type f \( -name "*.cpp" -o -name "*.h" \) -not -path "./.git/*" -not -path "./build/*" | tr '\n' ' ')
           fi
@@ -69,10 +55,10 @@ jobs:
           fi
         shell: bash
 
-      - name: Run AI Code Analysis Script
+      - name: Run AI Code Analysis Script (ChatGPT)
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # For creating issues/comments
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # Changed from GEMINI_API_KEY
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
           REPO_NAME: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
@@ -80,113 +66,115 @@ jobs:
           import time
           import random
           import json
-          # Ensure the correct Gemini library is imported if you installed one
-          # Example: import google.generativeai as genai
+          # Import the OpenAI library
+          import openai
 
           # --- Configuration ---
-          MAX_RETRIES = 5  # Max retries for API calls (increased from 3)
+          MAX_RETRIES = 5
           INITIAL_BACKOFF = 3  # Initial backoff delay in seconds
-          INTER_FILE_DELAY = 2 # Seconds to wait between processing each file (if multiple files)
-          GEMINI_MODEL_NAME = 'gemini-1.5-flash-latest' # As per your error log
+          INTER_FILE_DELAY = 2 # Seconds to wait between processing each file
+          OPENAI_MODEL_NAME = 'o4-mini'
 
-          GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-          if not GEMINI_API_KEY:
-              print("Error: GEMINI_API_KEY not found in environment variables.")
+          OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+          if not OPENAI_API_KEY:
+              print("Error: OPENAI_API_KEY not found in environment variables.")
               exit(1)
 
-          # --- Placeholder for Gemini Client Initialization ---
-          # If using google-generativeai SDK:
-          # try:
-          #   genai.configure(api_key=GEMINI_API_KEY)
-          #   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-          #   print(f"Successfully configured Gemini model: {GEMINI_MODEL_NAME}")
-          # except Exception as e:
-          #   print(f"Error configuring Gemini SDK: {e}")
-          #   exit(1)
-          # ----------------------------------------------------
+          # --- Initialize OpenAI Client ---
+          try:
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            print(f"Successfully configured OpenAI client for model: {OPENAI_MODEL_NAME}")
+          except Exception as e:
+            print(f"Error configuring OpenAI client: {e}")
+            exit(1)
+          # --------------------------------
 
-          def call_gemini_api_with_backoff(file_path, file_content):
+          def call_openai_api_with_backoff(file_path, file_content):
               """
-              Calls the Gemini API with exponential backoff and jitter.
-              Replace the placeholder API call with your actual implementation.
+              Calls the OpenAI API (Chat Completions) with exponential backoff and jitter.
               """
-              print(f"Analyzing {file_path} with Gemini ({GEMINI_MODEL_NAME})...")
+              print(f"Analyzing {file_path} with OpenAI model ({OPENAI_MODEL_NAME})...")
               retries = 0
               backoff_time = INITIAL_BACKOFF
               
-              # --- Construct your prompt and generation config here ---
-              # Example prompt structure:
-              prompt = f"Please analyze the following code from the file '{file_path}'. Identify potential bugs, suggest improvements for clarity, performance, and adherence to C++ best practices. Provide specific, actionable feedback. If there are multiple points, list them clearly.\n\n```cpp\n{file_content}\n```\n\nSuggestions:"
-
-              # Example generation config (specific to google-generativeai SDK):
-              # generation_config = genai.types.GenerationConfig(
-              #     temperature=0.6,
-              #     # max_output_tokens=2048, # Adjust as needed
-              # )
-              # safety_settings = [ # Adjust safety settings as needed
-              #   {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-              #   {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-              #   {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-              #   {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-              # ]
-              # ----------------------------------------------------------
+              # --- Construct your prompt for OpenAI ---
+              # System message can set the context for the AI
+              system_message = "You are an expert C++ code reviewer. Analyze the provided code snippet."
+              user_prompt = f"Please analyze the following code from the file '{file_path}'. Identify potential bugs, suggest improvements for clarity, performance, and adherence to C++ best practices. Provide specific, actionable feedback. If there are multiple points, list them clearly.\n\n```cpp\n{file_content}\n```\n\nSuggestions:"
+              # -----------------------------------------
 
               while retries < MAX_RETRIES:
                   try:
-                      # --- REPLACE WITH YOUR ACTUAL GEMINI API CALL ---
-                      # This is a placeholder. You'll need to use the Gemini SDK or a direct HTTP request.
-                      # Example using google-generativeai SDK:
-                      # response = model.generate_content(
-                      #     prompt,
-                      #     generation_config=generation_config,
-                      #     safety_settings=safety_settings
-                      # )
-                      # suggestions = response.text
-                      # -------------------------------------------------
-
-                      # --- Mocking API call for demonstration purposes ---
-                      # Remove this block when using the actual API
-                      if "test_fan_control.cpp" in file_path and retries < 3: # Simulate initial failures for a specific file
-                           print(f"Simulating 429 error for {file_path}, attempt {retries + 1}")
-                           raise Exception(f"429 Client Error: Too Many Requests for url: https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent?key=*** (Simulated)")
+                      # --- OpenAI API Call (Chat Completions) ---
+                      response = client.chat.completions.create(
+                          model=OPENAI_MODEL_NAME,
+                          messages=[
+                              {"role": "system", "content": system_message},
+                              {"role": "user", "content": user_prompt}
+                          ],
+                          temperature=0.5, # Adjust temperature for creativity vs. determinism
+                          # max_tokens=1500, # Adjust as needed
+                      )
+                      suggestions = response.choices[0].message.content.strip()
+                      # ---------------------------------------------
                       
-                      print(f"Successfully received analysis for {file_path} on attempt {retries + 1}.")
-                      suggestions = f"Mocked AI suggestions for {file_path}:\n- This is a great piece of code.\n- Consider refactoring function X for better readability." # Placeholder
-                      # --- End of Mocking block ---
-                      
+                      print(f"Successfully received analysis for {file_path} from OpenAI on attempt {retries + 1}.")
                       return suggestions
 
-                  except Exception as e:
-                      # Check if it's a rate limit error. The specific exception and message
-                      # will depend on the library you use (e.g., google.api_core.exceptions.ResourceExhausted for the SDK).
+                  except openai.APIError as e: # Catch specific OpenAI errors
+                      # Handle API error here, e.g. retry or log
                       error_str = str(e).lower()
-                      if "429" in error_str or "too many requests" in error_str or "resourceexhausted" in error_str or "rate limit" in error_str:
+                      # OpenAI uses 429 for rate limits, 5xx for server errors
+                      if e.status_code == 429 or "rate limit" in error_str or "too many requests" in error_str:
                           retries += 1
                           if retries >= MAX_RETRIES:
-                              print(f"Warning: Max retries reached for {file_path}. Error calling Gemini API (attempt {retries}/{MAX_RETRIES}): {e}")
+                              print(f"Warning: Max retries reached for {file_path}. Error calling OpenAI API (attempt {retries}/{MAX_RETRIES}): {e}")
                               print(f"Error: Failed to get suggestions for {file_path} after {MAX_RETRIES} attempts.")
                               return None
                           
-                          wait_time = backoff_time + random.uniform(0, 1.5) # Add jitter (increased slightly)
-                          print(f"Warning: Gemini API rate limit hit for {file_path} (attempt {retries}/{MAX_RETRIES}). Retrying in {wait_time:.2f} seconds... Error: {e}")
+                          # Get retry-after header if available, otherwise use exponential backoff
+                          retry_after = e.headers.get("retry-after")
+                          if retry_after:
+                              wait_time = int(retry_after) + random.uniform(0, 0.5) # Add small jitter
+                              print(f"OpenAI API rate limit hit for {file_path} (attempt {retries}/{MAX_RETRIES}). Retrying after {wait_time:.2f} seconds (from header)... Error: {e}")
+                          else:
+                              wait_time = backoff_time + random.uniform(0, 1.5)
+                              print(f"OpenAI API rate limit hit for {file_path} (attempt {retries}/{MAX_RETRIES}). Retrying in {wait_time:.2f} seconds... Error: {e}")
+                              backoff_time *= 2
+                          
                           time.sleep(wait_time)
-                          backoff_time *= 2  # Exponentially increase backoff (e.g., 3, 6, 12, 24 seconds)
+                      elif e.status_code >= 500: # Server-side errors, retry
+                          retries += 1
+                          if retries >= MAX_RETRIES:
+                              print(f"Warning: Max retries reached for {file_path} due to server error. Error calling OpenAI API (attempt {retries}/{MAX_RETRIES}): {e}")
+                              return None
+                          wait_time = backoff_time + random.uniform(0, 1.5)
+                          print(f"OpenAI API server error for {file_path} (attempt {retries}/{MAX_RETRIES}). Retrying in {wait_time:.2f} seconds... Error: {e}")
+                          time.sleep(wait_time)
+                          backoff_time *= 1.5 # Less aggressive backoff for server errors
                       else:
-                          # Handle other types of errors
-                          print(f"An unexpected error occurred while calling Gemini API for {file_path}: {e}")
-                          return None # Or re-raise the exception if you want the job to fail
-              return None # Should only be reached if MAX_RETRIES is 0 or loop logic is flawed
+                          # Non-retryable API error or other OpenAI error
+                          print(f"An unexpected OpenAI API error occurred for {file_path}: {e}")
+                          return None
+                  except Exception as e:
+                      # Handle other types of errors (e.g., network issues not caught by openai.APIError)
+                      print(f"A general error occurred while calling OpenAI API for {file_path}: {e}")
+                      # Basic retry for general errors too, could be refined
+                      retries += 1
+                      if retries >= MAX_RETRIES:
+                          return None
+                      wait_time = backoff_time + random.uniform(0, 1.5)
+                      print(f"Retrying in {wait_time:.2f} seconds...")
+                      time.sleep(wait_time)
+                      backoff_time *= 2
+              return None
 
           def create_github_issue_or_comment(title, body_content, pr_number=None):
-              """
-              Creates a GitHub issue or PR comment.
-              Requires GITHUB_TOKEN with appropriate permissions.
-              """
               github_token = os.getenv('GITHUB_TOKEN')
               repo_name = os.getenv('REPO_NAME')
               if not github_token or not repo_name:
                   print("Error: GITHUB_TOKEN or REPO_NAME not set. Cannot create issue/comment.")
-                  print(f"Title: {title}\nBody:\n{body_content}") # Print to console instead
+                  print(f"Title: {title}\nBody:\n{body_content}")
                   return
 
               headers = {
@@ -194,25 +182,23 @@ jobs:
                   "Accept": "application/vnd.github.v3+json"
               }
               
-              # For simplicity, this example always creates an issue.
-              # You could modify it to comment on a PR if pr_number is available.
-              # if pr_number:
-              #   api_url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
-              #   data = {"body": f"## {title}\n\n{body_content}"}
-              # else:
               api_url = f"https://api.github.com/repos/{repo_name}/issues"
               data = {"title": title, "body": body_content}
+              if pr_number: # If PR number exists, try to comment on the PR
+                  # Note: To comment on a PR, you usually post to the PR's issue URL comments
+                  # Or directly to /repos/{owner}/{repo}/pulls/{pull_number}/comments for review comments on diff
+                  # This example keeps it simple by creating an issue that references the PR.
+                  # For a direct PR comment, the API endpoint and data structure would change.
+                  data["body"] = f"AI Code Analysis for PR #{pr_number}:\n\n{body_content}"
+
 
               # --- This part requires the 'requests' library. Ensure it's installed. ---
               # import requests 
               # try:
               #     response = requests.post(api_url, json=data, headers=headers)
-              #     response.raise_for_status() # Raise an exception for HTTP errors
+              #     response.raise_for_status() 
               #     print(f"Successfully created GitHub issue/comment: {title}")
-              #     if pr_number:
-              #         print(f"Comment URL: {response.json().get('html_url')}")
-              #     else:
-              #         print(f"Issue URL: {response.json().get('html_url')}")
+              #     print(f"URL: {response.json().get('html_url')}")
               # except requests.exceptions.RequestException as e:
               #     print(f"Failed to create GitHub issue/comment '{title}'. Error: {e}")
               #     print(f"Response status: {response.status_code}, Response text: {response.text}")
@@ -220,14 +206,13 @@ jobs:
               #     print(f"An unexpected error occurred during GitHub API call: {e}")
               # --- End of 'requests' dependent block ---
               
-              # Mocking issue creation for now if 'requests' is not used/installed by default
               print(f"--- MOCK GITHUB INTERACTION ---")
               if pr_number:
-                print(f"Action: Would comment on PR #{pr_number}")
+                print(f"Action: Would create issue referencing PR #{pr_number} in {repo_name}")
               else:
                 print(f"Action: Would create issue in {repo_name}")
               print(f"Title: {title}")
-              print(f"Body:\n{body_content}")
+              print(f"Body:\n{data['body']}") # Use the potentially modified body
               print(f"-----------------------------")
 
 
@@ -259,7 +244,7 @@ jobs:
                       all_suggestions_for_report.append(f"### Suggestions for `{file_path}`:\n\n_File is empty or contains only whitespace. Skipped._\n\n---\n")
                       continue
 
-                  suggestions = call_gemini_api_with_backoff(file_path, file_content)
+                  suggestions = call_openai_api_with_backoff(file_path, file_content)
                   
                   if suggestions:
                       print(f"Suggestions received for {file_path}.")
@@ -269,7 +254,6 @@ jobs:
                       print(f"No suggestions were returned by AI for {file_path} after retries.")
                       all_suggestions_for_report.append(f"### Suggestions for `{file_path}`:\n\n_No suggestions were returned by the AI after {MAX_RETRIES} attempts._\n\n---\n")
 
-                  # Introduce a delay between processing each file, especially if there are many
                   if len(files_to_analyze) > 1 and i < len(files_to_analyze) - 1:
                       print(f"Waiting for {INTER_FILE_DELAY} seconds before processing the next file...")
                       time.sleep(INTER_FILE_DELAY)
@@ -281,19 +265,18 @@ jobs:
                   print(f"Error processing file {file_path}: {e}")
                   all_suggestions_for_report.append(f"### Analysis Error for `{file_path}`:\n\n_An unexpected error occurred: {e}_n\n---\n")
 
-          # After processing all files, create a single GitHub issue/comment with all suggestions
           if all_suggestions_for_report:
               pr_number_env = os.getenv('PR_NUMBER')
-              report_title = "AI Code Analysis Report"
+              report_title = "AI Code Analysis Report (OpenAI)"
               if pr_number_env:
                   report_title += f" for PR #{pr_number_env}"
               
-              report_body = f"## AI Code Analysis Summary\n\nAnalyzed {len(files_to_analyze)} file(s). Successfully received suggestions for {analysis_successful_count} file(s).\n\n"
+              report_body = f"## AI Code Analysis Summary (OpenAI {OPENAI_MODEL_NAME})\n\nAnalyzed {len(files_to_analyze)} file(s). Successfully received suggestions for {analysis_successful_count} file(s).\n\n"
               report_body += "".join(all_suggestions_for_report)
               
               create_github_issue_or_comment(report_title, report_body, pr_number=pr_number_env)
           else:
               print("No suggestions were generated or errors encountered for any files that would warrant a report.")
 
-          print("\nAI code analysis process complete.")
+          print("\nAI code analysis (OpenAI) process complete.")
         shell: python
