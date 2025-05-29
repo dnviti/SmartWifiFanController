@@ -7,6 +7,11 @@ on:
         description: 'Optional: Specific issue number to process (leave blank to process a batch)'
         required: false
         default: ''
+      issue_label:
+        description: 'Optional: Process issues with this specific label (e.g., bug, enhancement, documentation, refactor). Leave blank for any.'
+        required: false
+        default: ''
+        type: string
       max_issues_to_process:
         description: 'Maximum number of open issues to attempt to process in this run'
         required: false
@@ -25,8 +30,6 @@ jobs:
   resolve_issues_with_ai:
     runs-on: ubuntu-latest
     env:
-      # GITHUB_TOKEN is automatically available to gh CLI and git operations in Actions
-      # We pass it explicitly to the script for PyGithub via GH_TOKEN.
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
       TARGET_BRANCH: develop 
@@ -34,14 +37,13 @@ jobs:
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
       GITHUB_REPOSITORY_NWO: ${{ github.repository }}
-      # Label to add to issues after a PR has been created by the AI
       AI_PR_CREATED_LABEL: "ai-pr-created" 
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} # Use the default GITHUB_TOKEN
+          token: ${{ secrets.GITHUB_TOKEN }} 
           fetch-depth: 0 
 
       - name: Set up Python
@@ -80,9 +82,10 @@ jobs:
           TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'develop') 
           GIT_COMMIT_USER_NAME = os.getenv('GIT_COMMIT_USER_NAME')
           GIT_COMMIT_USER_EMAIL = os.getenv('GIT_COMMIT_USER_EMAIL')
-          AI_PR_CREATED_LABEL = os.getenv('AI_PR_CREATED_LABEL', 'ai-pr-created') # Get label from env
+          AI_PR_CREATED_LABEL = os.getenv('AI_PR_CREATED_LABEL', 'ai-pr-created')
           
           ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
+          ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '') # Get the label input
           MAX_ISSUES_TO_PROCESS = int(os.getenv('INPUT_MAX_ISSUES_TO_PROCESS', 1))
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
 
@@ -115,10 +118,16 @@ jobs:
                   try:
                       issue_obj = repo.get_issue(number=int(ISSUE_NUMBER_INPUT)) 
                       if issue_obj.state == 'open':
-                          # Check for the AI PR created label
                           has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
+                          # If a specific label is requested, ensure the issue has it
+                          has_requested_label = True # Assume true if no specific label is requested
+                          if ISSUE_LABEL_INPUT:
+                              has_requested_label = any(label.name.lower() == ISSUE_LABEL_INPUT.lower() for label in issue_obj.labels)
+                          
                           if has_ai_label:
                               print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
+                          elif ISSUE_LABEL_INPUT and not has_requested_label:
+                              print(f"Issue #{issue_obj.number} does not have the requested label '{ISSUE_LABEL_INPUT}'. Skipping.")
                           else:
                               issues_to_process.append(issue_obj)
                       else:
@@ -128,15 +137,22 @@ jobs:
                   except ValueError:
                       print(f"Error: Invalid issue number provided: {ISSUE_NUMBER_INPUT}")
               else:
-                  open_issues = repo.get_issues(state='open', sort='created', direction='asc')
+                  # Construct query parameters for get_issues
+                  query_params = {'state': 'open', 'sort': 'created', 'direction': 'asc'}
+                  if ISSUE_LABEL_INPUT:
+                      query_params['labels'] = [ISSUE_LABEL_INPUT] # PyGithub expects a list of labels
+                      print(f"Fetching open issues with label: '{ISSUE_LABEL_INPUT}'")
+                  else:
+                      print("Fetching any open issues (no specific label requested).")
+
+                  open_issues = repo.get_issues(**query_params)
                   count = 0
                   for issue_obj in open_issues: 
                       if count < MAX_ISSUES_TO_PROCESS:
-                          # Check for the AI PR created label
                           has_ai_label = any(label.name == AI_PR_CREATED_LABEL for label in issue_obj.labels)
                           if has_ai_label:
                               print(f"Issue #{issue_obj.number} already has the label '{AI_PR_CREATED_LABEL}'. Skipping.")
-                              continue # Skip this issue
+                              continue 
 
                           branch_name = f"ai-fix/issue-{issue_obj.number}"
                           try:
@@ -275,6 +291,8 @@ jobs:
               print(f"Target branch for PRs: {TARGET_BRANCH}") 
               print(f"Allow PR Creation: {ALLOW_PR_CREATION}")
               print(f"Label for processed issues: {AI_PR_CREATED_LABEL}")
+              if ISSUE_LABEL_INPUT:
+                  print(f"Filtering for issues with label: '{ISSUE_LABEL_INPUT}'")
 
 
               if ALLOW_PR_CREATION:
@@ -392,7 +410,6 @@ jobs:
                                   try:
                                       issue_obj.create_comment(comment_body)
                                       print(f"Successfully commented on issue #{issue_obj.number} with PR link.")
-                                      # Add the label to the issue
                                       issue_obj.add_to_labels(AI_PR_CREATED_LABEL)
                                       print(f"Successfully added label '{AI_PR_CREATED_LABEL}' to issue #{issue_obj.number}.")
                                   except GithubException as e_label_comment:
@@ -436,7 +453,7 @@ jobs:
       - name: Run AI Issue Processor Script
         env: 
           INPUT_ISSUE_NUMBER: ${{ github.event.inputs.issue_number }}
+          INPUT_ISSUE_LABEL: ${{ github.event.inputs.issue_label }} # Pass the new input to the script
           INPUT_MAX_ISSUES_TO_PROCESS: ${{ github.event.inputs.max_issues_to_process }}
           INPUT_ALLOW_PR_CREATION: ${{ github.event.inputs.allow_pr_creation }}
-          # AI_PR_CREATED_LABEL is available from job env to the script
         run: python .github/scripts/ai_issue_processor.py 
