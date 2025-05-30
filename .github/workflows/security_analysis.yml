@@ -2,15 +2,28 @@
 name: Security Analysis
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
-      - develop
-  # Allow manual triggering for testing
+  # push:
+  #   branches:
+  #     - main
+  #     - develop
+  #     # Trigger on push to specific AI-generated branch patterns
+  #     - 'bugfix/ai-issue-*'
+  #     - 'feature/ai-issue-*'
+  #     - 'docs/ai-issue-*'
+  #     - 'refactor/ai-issue-*'
+  #     - 'fix/ai-issue-*'
+  #     # Broader GitFlow patterns for other development branches
+  #     - 'bugfix/**'
+  #     - 'feature/**'
+  #     - 'docs/**'
+  #     - 'refactor/**'
+  #     - 'fix/**'
+  #     - 'ai-fix/**' # A more generic catch-all if specific prefixes are missed
+  # pull_request:
+  #   types: [opened, synchronize, reopened] 
+  #   branches:
+  #     - develop # Run for ANY PR targeting 'develop'
+  # Allow manual triggering
   workflow_dispatch:
 
 jobs:

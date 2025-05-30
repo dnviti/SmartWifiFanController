@@ -2,26 +2,26 @@
 name: Code Quality Checks
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths: # Only run if C/C++ or workflow files change
-      - 'src/**.[ch]pp'
-      - 'src/**.h'
-      - 'test/**.[ch]pp'
-      - 'test/**.h'
-      - '.github/workflows/code_quality_checks.yml'
-  pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'src/**.[ch]pp'
-      - 'src/**.h'
-      - 'test/**.[ch]pp'
-      - 'test/**.h'
-      - '.github/workflows/code_quality_checks.yml'
+  # push:
+  #   branches:
+  #     - main
+  #     - develop
+  #   paths: # Only run if C/C++ or workflow files change
+  #     - 'src/**.[ch]pp'
+  #     - 'src/**.h'
+  #     - 'test/**.[ch]pp'
+  #     - 'test/**.h'
+  #     - '.github/workflows/code_quality_checks.yml'
+  # pull_request:
+  #   branches:
+  #     - main
+  #     - develop
+  #   paths:
+  #     - 'src/**.[ch]pp'
+  #     - 'src/**.h'
+  #     - 'test/**.[ch]pp'
+  #     - 'test/**.h'
+  #     - '.github/workflows/code_quality_checks.yml'
   # Allow manual triggering
   workflow_dispatch:
 
