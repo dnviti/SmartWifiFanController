@@ -1,0 +1,203 @@
+name: AI Pull Request Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - develop
+  workflow_dispatch: # Allow manual triggering for testing
+    inputs:
+      pr_number:
+        description: 'Manually specify PR number to review (for testing)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read          # To checkout code and get PR diff
+  pull-requests: write   # To comment on the PR
+
+jobs:
+  review_pr_with_ai:
+    runs-on: ubuntu-latest
+    env:
+      # GITHUB_TOKEN is automatically available
+      # PYGITHUB_TOKEN is used by the PyGithub library, set to the default GITHUB_TOKEN
+      PYGITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+      # You might want to use a different model optimized for code review or a more powerful one
+      GEMINI_MODEL_FOR_REVIEW: "gemini-1.5-flash-latest" # Reverted to gemini-1.5-flash-latest
+      GITHUB_REPOSITORY_NWO: ${{ github.repository }}
+      # PR_NUMBER will be set dynamically for pull_request events, or from input for workflow_dispatch
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # Checkout the PR's head commit for accurate diffing if needed locally
+          # For 'gh pr diff', it usually works against the PR number directly
+          fetch-depth: 0 # Fetch all history to ensure diffs are accurate
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyGithub requests google-generativeai # PyGithub for PR object, requests for direct API if needed
+          sudo apt-get update && sudo apt-get install -y gh # GitHub CLI for diff and commenting
+
+      - name: Create Script Directory
+        run: mkdir -p .github/scripts
+
+      - name: Create AI PR Reviewer Script (Conceptual)
+        run: |
+          cat << 'EOF' > .github/scripts/ai_pr_reviewer.py
+          # Conceptual Python Script: .github/scripts/ai_pr_reviewer.py
+          import os
+          import sys
+          import google.generativeai as genai
+          import subprocess
+          from github import Github, GithubException
+
+          # --- Configuration ---
+          GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+          GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL_FOR_REVIEW', 'gemini-1.5-flash-latest') # Reverted default
+          GH_TOKEN = os.getenv('PYGITHUB_TOKEN') # Using PYGITHUB_TOKEN for PyGithub
+          REPO_NWO = os.getenv('GITHUB_REPOSITORY_NWO')
+          PR_NUMBER_STR = os.getenv('PR_NUMBER')
+
+          MAX_DIFF_CHARS = 100000 # Limit the size of the diff sent to the AI (approx 25k tokens)
+
+          if not GEMINI_API_KEY:
+              print("Error: GEMINI_API_KEY environment variable not set.")
+              sys.exit(1)
+          if not GH_TOKEN:
+              print("Error: PYGITHUB_TOKEN environment variable not set.")
+              sys.exit(1)
+          if not REPO_NWO:
+              print("Error: GITHUB_REPOSITORY_NWO environment variable not set.")
+              sys.exit(1)
+          if not PR_NUMBER_STR:
+              print("Error: PR_NUMBER environment variable not set or PR number not found.")
+              sys.exit(1)
+
+          try:
+              PR_NUMBER = int(PR_NUMBER_STR)
+          except ValueError:
+              print(f"Error: Invalid PR_NUMBER: {PR_NUMBER_STR}")
+              sys.exit(1)
+
+          genai.configure(api_key=GEMINI_API_KEY)
+          g = Github(GH_TOKEN)
+          try:
+              repo = g.get_repo(REPO_NWO)
+              pr = repo.get_pull(PR_NUMBER)
+          except GithubException as e:
+              print(f"Error: Could not get repository '{REPO_NWO}' or PR #{PR_NUMBER}. Details: {e}")
+              sys.exit(1)
+
+          # --- Helper Functions ---
+          def get_pr_diff():
+              print(f"Fetching diff for PR #{PR_NUMBER}...")
+              try:
+                  # Use gh CLI to get the diff
+                  # Ensure GITHUB_TOKEN is available in the environment for gh
+                  diff_command = ["gh", "pr", "diff", str(PR_NUMBER), "--repo", REPO_NWO]
+                  # gh CLI uses GITHUB_TOKEN from env, which is secrets.GITHUB_TOKEN in actions
+                  process = subprocess.run(diff_command, capture_output=True, text=True, check=True)
+                  diff_text = process.stdout
+                  if len(diff_text) > MAX_DIFF_CHARS:
+                      print(f"Warning: Diff is too large ({len(diff_text)} chars). Truncating to {MAX_DIFF_CHARS} chars.")
+                      diff_text = diff_text[:MAX_DIFF_CHARS] + "\n... (diff truncated due to length)"
+                  return diff_text
+              except subprocess.CalledProcessError as e:
+                  print(f"Error fetching PR diff using gh CLI: {e.stderr}")
+                  return None
+              except FileNotFoundError:
+                  print("Error: 'gh' command not found. Is GitHub CLI installed?")
+                  return None
+
+
+          def call_gemini_for_review(diff_text, pr_title, pr_body):
+              if not diff_text:
+                  return "Could not fetch PR diff to review."
+
+              print(f"Calling Gemini API for review (Model: {GEMINI_MODEL_NAME})...")
+              
+              # Construct a more detailed prompt for code review
+              prompt = (
+                  f"You are an expert code reviewer. Please review the following Pull Request for the repository '{REPO_NWO}'.\n"
+                  f"PR Title: {pr_title}\n"
+                  f"PR Description:\n{pr_body if pr_body else 'No description provided.'}\n\n"
+                  f"Code Diff:\n```diff\n{diff_text}\n```\n\n"
+                  f"Please provide a concise code review. Focus on:\n"
+                  f"- Potential bugs or logic errors.\n"
+                  f"- Adherence to best practices (e.g., readability, maintainability, efficiency).\n"
+                  f"- Security vulnerabilities.\n"
+                  f"- Style inconsistencies (if apparent from the diff).\n"
+                  f"- Suggestions for improvement or clarification.\n"
+                  f"Structure your review clearly. If there are multiple points, use bullet points.\n"
+                  f"If no significant issues are found, a simple 'Looks good' or 'No major issues found' is acceptable.\n"
+                  f"Keep the review professional and constructive. Do not include a preamble like 'Okay, I will review this'. Start directly with the review."
+              )
+              
+              try:
+                  model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+                  response = model.generate_content(
+                      prompt,
+                      generation_config=genai.types.GenerationConfig(temperature=0.3, max_output_tokens=2048)
+                  )
+                  if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                      return response.candidates[0].content.parts[0].text
+                  else:
+                      print("Warning: Gemini API review response structure not as expected or empty.")
+                      return "AI review could not be generated (empty response)."
+              except Exception as e:
+                  print(f"Error calling Gemini API for review: {e}")
+                  return f"AI review failed due to an API error: {e}"
+
+          def post_pr_comment(comment_body):
+              print(f"Posting review comment to PR #{PR_NUMBER}...")
+              try:
+                  # Use gh CLI to post the comment
+                  # Ensure GITHUB_TOKEN is available in the environment for gh
+                  comment_command = ["gh", "pr", "comment", str(PR_NUMBER), "--repo", REPO_NWO, "--body", comment_body]
+                  subprocess.run(comment_command, check=True, capture_output=True, text=True)
+                  print("Successfully posted review comment.")
+              except subprocess.CalledProcessError as e:
+                  print(f"Error posting PR comment using gh CLI: {e.stderr}")
+              except FileNotFoundError:
+                  print("Error: 'gh' command not found. Is GitHub CLI installed?")
+
+
+          # --- Main Logic ---
+          def main():
+              print(f"Starting AI PR Review for PR #{PR_NUMBER} in repository: {REPO_NWO}")
+              
+              pr_diff = get_pr_diff()
+              if not pr_diff:
+                  print("Failed to get PR diff. Aborting review.")
+                  return
+
+              ai_review_text = call_gemini_for_review(pr_diff, pr.title, pr.body)
+              
+              if ai_review_text:
+                  formatted_comment = f"**🤖 AI Code Review (Model: {GEMINI_MODEL_NAME}):**\n\n{ai_review_text}"
+                  post_pr_comment(formatted_comment)
+              else:
+                  print("No review text generated by AI.")
+                  post_pr_comment("AI Reviewer: Could not generate a review for this PR.")
+
+              print("AI PR Review run finished.")
+
+          if __name__ == "__main__":
+              main()
+          EOF
+          chmod +x .github/scripts/ai_pr_reviewer.py
+
+      - name: Run AI PR Reviewer Script
+        run: python .github/scripts/ai_pr_reviewer.py
