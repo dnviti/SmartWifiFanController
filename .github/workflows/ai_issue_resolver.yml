@@ -20,7 +20,7 @@ on:
       max_issues_to_process:
         description: 'Max issues to process. Leave empty to process all matching issues. Default if untouched is 1.' 
         required: false
-        default: '' # Changed: Default to empty string. Script will handle this as "all".
+        default: '' 
         type: string 
       allow_pr_creation:
         description: 'Set to "true" to allow the script to create Pull Requests'
@@ -29,8 +29,8 @@ on:
 
 permissions:
   contents: write      
-  pull-requests: write 
-  issues: write        
+  pull-requests: write # To create pull requests and add labels to them
+  issues: write        # To read issues, write comments, and manage labels
 
 jobs:
   resolve_issues_with_ai:
@@ -43,7 +43,7 @@ jobs:
       GIT_COMMIT_USER_NAME: "AI Issue Resolver Bot"
       GIT_COMMIT_USER_EMAIL: "ai-bot@users.noreply.github.com"
       GITHUB_REPOSITORY_NWO: ${{ github.repository }}
-      AI_PR_CREATED_LABEL: "ai-pr-created" 
+      AI_PR_CREATED_LABEL: "ai-pr-created" # Label to mark issues processed by AI
 
     steps:
       - name: Checkout Repository
@@ -96,12 +96,9 @@ jobs:
           ISSUE_NUMBER_INPUT = os.getenv('INPUT_ISSUE_NUMBER', '') 
           ISSUE_LABEL_INPUT = os.getenv('INPUT_ISSUE_LABEL', '').lower() 
           
-          # Handle max_issues_to_process input
-          # The workflow input default is now '', so if user leaves it blank, INPUT_MAX_ISSUES_TO_PROCESS will be ''.
-          # os.getenv will return this empty string.
-          MAX_ISSUES_INPUT_STR = os.getenv('INPUT_MAX_ISSUES_TO_PROCESS') # No default for getenv here, rely on workflow input
+          MAX_ISSUES_INPUT_STR = os.getenv('INPUT_MAX_ISSUES_TO_PROCESS') 
           
-          if MAX_ISSUES_INPUT_STR == "" or MAX_ISSUES_INPUT_STR is None: # Explicitly check for empty string or None
+          if MAX_ISSUES_INPUT_STR == "" or MAX_ISSUES_INPUT_STR is None: 
               MAX_ISSUES_TO_PROCESS = sys.maxsize 
               print("Max issues to process: All matching issues (input was empty or not set)")
           else:
@@ -113,7 +110,7 @@ jobs:
                   else:
                       print(f"Max issues to process: {MAX_ISSUES_TO_PROCESS}")
               except ValueError:
-                  MAX_ISSUES_TO_PROCESS = 1 # Default to 1 if input is not a valid number (e.g. random string)
+                  MAX_ISSUES_TO_PROCESS = 1 
                   print(f"Warning: Invalid value for max_issues_to_process ('{MAX_ISSUES_INPUT_STR}'). Defaulting to 1.")
 
           ALLOW_PR_CREATION = os.getenv('INPUT_ALLOW_PR_CREATION', 'false').lower() == 'true'
@@ -193,9 +190,9 @@ jobs:
 
                       branch_prefix = BRANCH_PREFIX_MAP.get(ISSUE_LABEL_INPUT, DEFAULT_BRANCH_PREFIX) if ISSUE_LABEL_INPUT else DEFAULT_BRANCH_PREFIX
                       if not ISSUE_LABEL_INPUT:
-                          for label_obj in issue_obj.labels:
-                              if label_obj.name.lower() in BRANCH_PREFIX_MAP:
-                                  branch_prefix = BRANCH_PREFIX_MAP[label_obj.name.lower()]
+                          for label_obj_in_issue in issue_obj.labels: # Renamed label_obj to avoid conflict
+                              if label_obj_in_issue.name.lower() in BRANCH_PREFIX_MAP:
+                                  branch_prefix = BRANCH_PREFIX_MAP[label_obj_in_issue.name.lower()]
                                   break 
 
                       branch_name = f"{branch_prefix}ai-issue-{issue_obj.number}"
@@ -215,7 +212,6 @@ jobs:
               return issues_to_process
 
           def get_entire_codebase_context():
-              # ... (content as before)
               print("Attempting to fetch entire codebase context from specified directories...")
               full_context = "Full Codebase Context:\n"
               current_chars = 0
@@ -247,7 +243,6 @@ jobs:
               return full_context
 
           def call_gemini_api(prompt_text):
-              # ... (content as before)
               print(f"Calling Gemini API (Model: {GEMINI_MODEL_NAME})...")
               try:
                   model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -270,7 +265,6 @@ jobs:
                   return None
 
           def parse_and_apply_changes(ai_response_text, current_branch_name):
-              # ... (content as before)
               print("Parsing AI response and attempting to apply changes...")
               applied_changes = False
               if not ai_response_text:
@@ -311,11 +305,10 @@ jobs:
               return applied_changes
 
           def run_git_command(command_list, ignore_error=False, work_dir=None):
-              # ... (content as before)
               try:
                   print(f"Running command: {' '.join(command_list)} {'in ' + work_dir if work_dir else ''}")
-                  github_token_env = os.getenv('GITHUB_TOKEN', 'Not Set')
-                  print(f"  (Using GITHUB_TOKEN from env: ...{github_token_env[-4:] if len(github_token_env) > 4 else '****'})")
+                  github_token_env = os.getenv('GITHUB_TOKEN', 'Not Set') # GITHUB_TOKEN is the standard env var for gh
+                  print(f"  (Using GITHUB_TOKEN from env for gh/git: ...{github_token_env[-4:] if len(github_token_env) > 4 else '****'})")
                   
                   result = subprocess.run(command_list, check=not ignore_error, capture_output=True, text=True, cwd=work_dir)
                   stdout_clean = result.stdout.strip()
@@ -365,9 +358,9 @@ jobs:
                   current_issue_label_for_prefix = ISSUE_LABEL_INPUT 
                   
                   if not current_issue_label_for_prefix: 
-                      for label_obj in issue_obj.labels:
-                          if label_obj.name.lower() in BRANCH_PREFIX_MAP:
-                              current_issue_label_for_prefix = label_obj.name.lower()
+                      for label_obj_in_issue in issue_obj.labels: # Renamed to avoid conflict
+                          if label_obj_in_issue.name.lower() in BRANCH_PREFIX_MAP:
+                              current_issue_label_for_prefix = label_obj_in_issue.name.lower()
                               break 
                   
                   if current_issue_label_for_prefix: 
@@ -465,6 +458,14 @@ jobs:
                                   pr_url = pr_result.stdout.strip()
                                   print(f"Successfully created PR for issue #{issue_obj.number}: {pr_url}")
                                   
+                                  # Get PR number from URL to add labels
+                                  created_pr_number = None
+                                  if pr_url:
+                                      try:
+                                          created_pr_number = int(pr_url.split('/')[-1])
+                                      except ValueError:
+                                          print(f"Could not parse PR number from URL: {pr_url}")
+
                                   comment_body = (
                                       f"🤖 AI Assistant has attempted a fix for this issue.\n"
                                       f"Please review the proposed changes in Pull Request: {pr_url}"
@@ -474,8 +475,22 @@ jobs:
                                       print(f"Successfully commented on issue #{issue_obj.number} with PR link.")
                                       issue_obj.add_to_labels(AI_PR_CREATED_LABEL)
                                       print(f"Successfully added label '{AI_PR_CREATED_LABEL}' to issue #{issue_obj.number}.")
+
+                                      # Add original issue labels to the PR
+                                      if created_pr_number:
+                                          newly_created_pr = repo.get_pull(created_pr_number)
+                                          original_issue_labels = [label.name for label in issue_obj.labels if label.name != AI_PR_CREATED_LABEL]
+                                          if original_issue_labels:
+                                              print(f"Attempting to add labels to PR #{created_pr_number}: {original_issue_labels}")
+                                              newly_created_pr.add_to_labels(*original_issue_labels) # Pass as separate arguments
+                                              print(f"Successfully added original issue labels to PR #{created_pr_number}.")
+                                          else:
+                                              print(f"No original labels (excluding '{AI_PR_CREATED_LABEL}') to add to PR #{created_pr_number}.")
+                                      else:
+                                          print("Could not get PR number to add labels.")
+
                                   except GithubException as e_label_comment:
-                                      print(f"Failed to comment or add label to issue #{issue_obj.number}: {e_label_comment}")
+                                      print(f"Failed to comment or add label to issue/PR #{issue_obj.number}: {e_label_comment}")
 
                               except subprocess.CalledProcessError as e:
                                   print(f"Failed to create PR for issue #{issue_obj.number}. STDERR: {e.stderr.strip()}")
