@@ -88,7 +88,10 @@ extern volatile int passwordCharIndex;
 extern volatile char currentPasswordEditChar; 
 
 // --- Fan Curve ---
+const int DEFAULT_CURVE_POINT_COUNT = 5; // Define the number of points in the default fan curve
 const int MAX_CURVE_POINTS = 8; 
+static_assert(MAX_CURVE_POINTS >= DEFAULT_CURVE_POINT_COUNT, "MAX_CURVE_POINTS must be large enough to hold the default fan curve points.");
+
 extern int tempPoints[MAX_CURVE_POINTS];
 extern int pwmPercentagePoints[MAX_CURVE_POINTS];
 extern int numCurvePoints;

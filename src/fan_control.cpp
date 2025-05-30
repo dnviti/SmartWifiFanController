@@ -2,7 +2,7 @@
 #include "config.h" // For global variables
 
 void setDefaultFanCurve() {
-    numCurvePoints = 5;
+    numCurvePoints = DEFAULT_CURVE_POINT_COUNT; // Use the defined constant
     tempPoints[0] = 25; pwmPercentagePoints[0] = 0;  
     tempPoints[1] = 35; pwmPercentagePoints[1] = 20; 
     tempPoints[2] = 45; pwmPercentagePoints[2] = 50; 
