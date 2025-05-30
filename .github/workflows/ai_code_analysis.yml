@@ -16,9 +16,6 @@ on:
 jobs:
   analyze-code:
     runs-on: ubuntu-latest
-    # You can define the environment variable at the job level if you prefer
-    # env:
-    #   OPENAI_MODEL_NAME_OVERRIDE_JOB_LEVEL: 'gpt-4-turbo' # Example
     permissions:
       contents: read          # To checkout the repository
       pull-requests: read    # To read PR details if needed (e.g., PR number for context)
@@ -47,8 +44,9 @@ jobs:
           echo "Determining files to analyze..."
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             MERGE_BASE=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
-            FILES=$(git diff --name-only $MERGE_BASE HEAD | grep -E '\.(cpp|h|c|hpp|cc|hh|cxx|hxx)$' | tr '\n' ' ')
-          else # For workflow_dispatch or other events, analyze all relevant files
+            # Ensure paths are relative by nature of git diff
+            FILES=$(git diff --name-only --relative $MERGE_BASE HEAD | grep -E '\.(cpp|h|c|hpp|cc|hh|cxx|hxx)$' | tr '\n' ' ')
+          else 
             echo "Triggered by workflow_dispatch or other event. Python script will handle file discovery if FILES_TO_ANALYZE='*'."
             FILES="*" # Signal to Python script to find all files
           fi
@@ -67,10 +65,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
           REPO_NAME: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          # Use the workflow_dispatch input if available, otherwise it will be empty,
-          # and the Python script will use its internal default.
           OPENAI_MODEL_NAME_OVERRIDE: ${{ github.event.inputs.custom_openai_model || '' }}
-          FILES_TO_ANALYZE: "${{ steps.changed_files.outputs.files_to_analyze }}" # Pass the determined files or "*"
+          FILES_TO_ANALYZE: "${{ steps.changed_files.outputs.files_to_analyze }}"
+          GITHUB_WORKSPACE: ${{ github.workspace }} # Pass workspace path to script
         run: |
           import os
           import time
@@ -83,22 +80,22 @@ jobs:
           MAX_RETRIES = 5
           INITIAL_BACKOFF = 5
           INTER_FILE_DELAY = 3
-          DEFAULT_OPENAI_MODEL_NAME = '4o-mini' # Default model
+          DEFAULT_OPENAI_MODEL_NAME = '4o-mini' 
           OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME_OVERRIDE', DEFAULT_OPENAI_MODEL_NAME)
-          if not OPENAI_MODEL_NAME.strip(): # If override is empty string, use default
+          if not OPENAI_MODEL_NAME.strip(): 
               OPENAI_MODEL_NAME = DEFAULT_OPENAI_MODEL_NAME
               
           RELEVANT_EXTENSIONS = ('.cpp', '.h', '.c', '.hpp', '.cc', '.hh', '.cxx', '.hxx')
           EXCLUDE_DIRS = ['.git', '.github', 'build', 'dist', 'venv', '.venv', 'node_modules', '__pycache__', 'docs/build']
           EXCLUDE_FILES = ['LICENSE', 'LICENSE.md', 'CONTRIBUTING.md']
+          GITHUB_WORKSPACE_PATH = os.getenv('GITHUB_WORKSPACE', os.getcwd()) # Get workspace path
 
           OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
           if not OPENAI_API_KEY:
               print("Error: OPENAI_API_KEY not found in environment variables.")
               exit(1)
 
-          # This will now be printed in the GitHub Actions log
-          print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}' (Script default was: '{DEFAULT_OPENAI_MODEL_NAME}')")
+          print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}'")
 
           try:
             client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -107,12 +104,30 @@ jobs:
             print(f"Error configuring OpenAI client: {e}")
             exit(1)
 
-          def call_openai_for_issues(file_path, file_content):
+          def get_relative_path(abs_path):
+              # Ensure paths are relative to the workspace root
+              # os.path.relpath is safer than string stripping if abs_path is already relative
+              try:
+                  # First, ensure abs_path is indeed absolute or make it so if it's already project-relative
+                  if not os.path.isabs(abs_path):
+                      abs_path = os.path.join(GITHUB_WORKSPACE_PATH, abs_path)
+                  
+                  rel_path = os.path.relpath(abs_path, GITHUB_WORKSPACE_PATH)
+                  # If relpath returns something starting with '..' it means it's outside workspace,
+                  # which shouldn't happen for files found by walking "." or from git diff --relative
+                  if rel_path.startswith(".."):
+                      return abs_path # Fallback to original if relpath goes outside
+                  return rel_path
+              except ValueError: # Can happen if paths are on different drives (not applicable here)
+                  return abs_path # Fallback
+
+
+          def call_openai_for_issues(file_path_for_ai, file_content):
               """
               Calls OpenAI API, expecting a JSON array of issue objects.
-              Each issue object should have 'title', 'description', and 'category'.
+              file_path_for_ai should be the relative path for use in prompts.
               """
-              print(f"Requesting AI analysis for issues in {file_path} using {OPENAI_MODEL_NAME}...")
+              print(f"Requesting AI analysis for issues in {file_path_for_ai} using {OPENAI_MODEL_NAME}...")
               retries = 0
               backoff_time = INITIAL_BACKOFF
               
@@ -124,15 +139,15 @@ jobs:
                   "- \"title\": A concise title for a GitHub issue (max 80 characters).\n"
                   "- \"description\": A detailed Markdown-formatted description of the issue. Explain the problem or "
                   "suggestion, why it's relevant, and if possible, suggest a fix or implementation idea. "
-                  f"Reference the file path '{file_path}' in your description.\n"
+                  f"Reference the file path '{file_path_for_ai}' in your description.\n" # Use relative path in prompt
                   "- \"category\": Classify the issue. Choose ONLY from: \"bug\", \"enhancement\", \"refactor\", \"documentation\", \"feature_suggestion\".\n"
                   "Return a JSON array containing these issue objects. If no issues are found for this specific file, return an empty JSON array []."
               )
               user_prompt = (
-                  f"Analyze the following C++ code from the file '{file_path}'. "
+                  f"Analyze the following C++ code from the file '{file_path_for_ai}'. " # Use relative path
                   "Focus only on issues present in or directly suggested by THIS code. "
                   "Remember to provide your response strictly as a JSON array of issue objects, or an empty array if no issues are found.\n\n"
-                  f"File Path: {file_path}\n"
+                  f"File Path: {file_path_for_ai}\n" # Use relative path
                   "```cpp\n" 
                   f"{file_content}\n"
                   "```\n"
@@ -170,62 +185,62 @@ jobs:
                               except json.JSONDecodeError:
                                    issues = [] 
 
-                          print(f"Successfully received and parsed AI analysis for {file_path} on attempt {retries + 1}. Found {len(issues)} potential issues.")
+                          print(f"Successfully received and parsed AI analysis for {file_path_for_ai} on attempt {retries + 1}. Found {len(issues)} potential issues.")
                           return issues
                       except json.JSONDecodeError:
-                          print(f"Warning: AI response for {file_path} was not valid JSON on attempt {retries + 1}. Response: {response_content[:500]}...")
+                          print(f"Warning: AI response for {file_path_for_ai} was not valid JSON on attempt {retries + 1}. Response: {response_content[:500]}...")
                           if retries >= MAX_RETRIES -1:
-                            return [{"title": f"AI Analysis Error: Non-JSON Response for {file_path}", 
-                                      "description": f"The AI's response for `{file_path}` was not valid JSON and could not be parsed after {MAX_RETRIES} attempts.\n\nRaw response snippet:\n```\n{response_content[:1000]}\n```",
-                                      "category": "internal_error", "file_path": file_path}] 
+                            return [{"title": f"AI Analysis Error: Non-JSON Response for {file_path_for_ai}", 
+                                      "description": f"The AI's response for `{file_path_for_ai}` was not valid JSON and could not be parsed after {MAX_RETRIES} attempts.\n\nRaw response snippet:\n```\n{response_content[:1000]}\n```",
+                                      "category": "internal_error", "file_path": file_path_for_ai}] 
                   
                   except openai.APIError as e:
                       error_str = str(e).lower()
                       if hasattr(e, 'code') and e.code == 'model_not_found':
-                          print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' not found or access denied. Error: {e}")
-                          return [{"title": f"AI Model Not Found: {OPENAI_MODEL_NAME}", "description": f"Analysis skipped for `{file_path}`: The OpenAI model '{OPENAI_MODEL_NAME}' was not found or your API key does not have access to it. Please verify the model name and your API key permissions. Error details: {e}", "category": "configuration_error", "file_path": file_path}]
+                          print(f"OpenAI API error for {file_path_for_ai}: Model '{OPENAI_MODEL_NAME}' not found or access denied. Error: {e}")
+                          return [{"title": f"AI Model Not Found: {OPENAI_MODEL_NAME}", "description": f"Analysis skipped for `{file_path_for_ai}`: The OpenAI model '{OPENAI_MODEL_NAME}' was not found or your API key does not have access to it. Please verify the model name and your API key permissions. Error details: {e}", "category": "configuration_error", "file_path": file_path_for_ai}]
 
                       if e.status_code == 400 and hasattr(e, 'body') and e.body and 'param' in e.body and e.body.get('param') == 'temperature' and 'unsupported_value' in e.body.get('code',''):
-                          print(f"OpenAI API error for {file_path}: Model '{OPENAI_MODEL_NAME}' does not support the specified temperature or temperature setting. Error: {e.body.get('message')}")
-                          return [{"title": f"AI Model Config Error for {file_path}", "description": f"Analysis skipped for `{file_path}`: Model '{OPENAI_MODEL_NAME}' does not support current temperature settings. Error: {e.body.get('message')}", "category": "configuration_error", "file_path": file_path}]
+                          print(f"OpenAI API error for {file_path_for_ai}: Model '{OPENAI_MODEL_NAME}' does not support the specified temperature or temperature setting. Error: {e.body.get('message')}")
+                          return [{"title": f"AI Model Config Error for {file_path_for_ai}", "description": f"Analysis skipped for `{file_path_for_ai}`: Model '{OPENAI_MODEL_NAME}' does not support current temperature settings. Error: {e.body.get('message')}", "category": "configuration_error", "file_path": file_path_for_ai}]
 
                       if e.status_code == 429 or "rate limit" in error_str or "too many requests" in error_str:
                           retries += 1
                           if retries >= MAX_RETRIES:
-                              print(f"Max retries reached for {file_path}. Error: {e}")
-                              return None
+                              print(f"Max retries reached for {file_path_for_ai}. Error: {e}")
+                              return None # Or return an error issue object
                           
-                          retry_after_header = e.headers.get("retry-after")
+                          retry_after_header = e.headers.get("retry-after") if hasattr(e, 'headers') else None
                           wait_time = backoff_time
                           if retry_after_header:
                               try:
                                   wait_time = int(retry_after_header) + random.uniform(0, 1)
-                                  print(f"OpenAI API rate limit for {file_path}. Retrying after {wait_time:.2f}s (from header). Error: {e}")
+                                  print(f"OpenAI API rate limit for {file_path_for_ai}. Retrying after {wait_time:.2f}s (from header). Error: {e}")
                               except ValueError:
-                                  print(f"OpenAI API rate limit for {file_path}. Invalid retry-after header. Using exponential backoff: {wait_time:.2f}s. Error: {e}")
+                                  print(f"OpenAI API rate limit for {file_path_for_ai}. Invalid retry-after header. Using exponential backoff: {wait_time:.2f}s. Error: {e}")
                                   backoff_time *= 2
                           else:
-                              print(f"OpenAI API rate limit for {file_path}. Retrying in {wait_time:.2f}s. Error: {e}")
+                              print(f"OpenAI API rate limit for {file_path_for_ai}. Retrying in {wait_time:.2f}s. Error: {e}")
                               backoff_time *= 2
                           time.sleep(wait_time)
-                      elif e.status_code >= 500:
+                      elif e.status_code >= 500: # Server-side errors
                           retries += 1
                           if retries >= MAX_RETRIES: return None
                           wait_time = backoff_time + random.uniform(0, 1.5)
-                          print(f"OpenAI API server error for {file_path}. Retrying in {wait_time:.2f}s. Error: {e}")
+                          print(f"OpenAI API server error for {file_path_for_ai}. Retrying in {wait_time:.2f}s. Error: {e}")
                           time.sleep(wait_time)
-                          backoff_time *= 1.5
-                      else:
-                          print(f"Unexpected OpenAI API error for {file_path}: {e}")
+                          backoff_time *= 1.5 # Increase backoff more aggressively for server errors
+                      else: # Other client-side errors (4xx not caught above)
+                          print(f"Unexpected OpenAI API error for {file_path_for_ai}: {e}")
                           if hasattr(e, 'body') and e.body: print(f"Error details: {e.body}")
-                          return None 
-                  except Exception as e:
-                      print(f"General error calling OpenAI for {file_path}: {e}")
+                          return None # Or an error issue object
+                  except Exception as e: # Catch other unexpected errors
+                      print(f"General error calling OpenAI for {file_path_for_ai}: {e}")
                       retries += 1
                       if retries >= MAX_RETRIES: return None
                       time.sleep(backoff_time + random.uniform(0,1.5))
                       backoff_time *= 2
-              return None
+              return None # Should not be reached if retries are handled correctly
 
           def create_github_issue(title, body, labels=None):
               github_token = os.getenv('GITHUB_TOKEN')
@@ -264,80 +279,93 @@ jobs:
               repo_files = []
               abs_exclude_dirs = [os.path.abspath(os.path.join(root_dir, d)) for d in exclude_dirs]
               for dirpath, dirnames, filenames in os.walk(root_dir):
+                  # Modify dirnames in-place to exclude directories
                   dirnames[:] = [d for d in dirnames if os.path.abspath(os.path.join(dirpath, d)) not in abs_exclude_dirs and not d.startswith('.')]
                   for filename in filenames:
-                      if filename.lower().endswith(extensions) and filename not in exclude_files:
-                          full_path = os.path.join(dirpath, filename)
-                          repo_files.append(os.path.normpath(full_path))
+                      # Check extensions first
+                      if any(filename.lower().endswith(ext.replace('*','')) for ext in extensions if ext.startswith('*.')): # crude way to handle simple wildcards
+                          if filename.lower() not in [ef.lower() for ef in exclude_files]:
+                              full_path = os.path.join(dirpath, filename)
+                              # Make path relative to root_dir (which is workspace root)
+                              relative_path = os.path.relpath(full_path, root_dir)
+                              repo_files.append(relative_path)
               return repo_files
 
           def main():
-              print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}' (Script default was: '{DEFAULT_OPENAI_MODEL_NAME}')")
+              print(f"Initializing AI Code Analysis Script. Attempting to use OpenAI model: '{OPENAI_MODEL_NAME}'")
 
               files_to_analyze_input = os.getenv('FILES_TO_ANALYZE')
-              files_to_analyze = []
+              files_to_analyze_paths = [] # This will store relative paths
 
               if files_to_analyze_input == "*":
                   print("FILES_TO_ANALYZE is '*', scanning repository for relevant files...")
-                  current_directory = os.getcwd() 
-                  print(f"Scanning from directory: {current_directory}")
-                  files_to_analyze = get_all_repo_files(root_dir=current_directory)
-                  if not files_to_analyze:
+                  # GITHUB_WORKSPACE_PATH is already the current working directory for the script
+                  files_to_analyze_paths = get_all_repo_files(root_dir=".")
+                  if not files_to_analyze_paths:
                       print(f"No files found with extensions {RELEVANT_EXTENSIONS} in the repository (excluding specified directories/files).")
-                      exit(0)
+                      sys.exit(0) # Use sys.exit(0) for clean exit
               elif files_to_analyze_input:
-                  files_to_analyze = [f.strip() for f in files_to_analyze_input.strip().split(' ') if f.strip()]
+                  # These paths from git diff should already be relative to repo root
+                  files_to_analyze_paths = [f.strip() for f in files_to_analyze_input.strip().split(' ') if f.strip()]
               else:
                   print("FILES_TO_ANALYZE environment variable not set or empty, and not '*'. Assuming no files to analyze for this run.")
-                  exit(0) 
+                  sys.exit(0) 
               
-              if not files_to_analyze:
+              if not files_to_analyze_paths:
                   print("No valid file paths to analyze.")
-                  exit(0)
+                  sys.exit(0)
                   
-              print(f"Files queued for analysis ({len(files_to_analyze)}): {files_to_analyze}")
+              print(f"Files queued for analysis ({len(files_to_analyze_paths)}): {files_to_analyze_paths}")
               total_issues_created = 0
 
-              for i, file_path in enumerate(files_to_analyze):
-                  print(f"\nProcessing file {i+1}/{len(files_to_analyze)}: {file_path}")
+              for i, original_file_path in enumerate(files_to_analyze_paths):
+                  # Ensure we use a clearly relative path for prompts and issue bodies
+                  relative_file_path = get_relative_path(original_file_path)
+                  print(f"\nProcessing file {i+1}/{len(files_to_analyze_paths)}: {relative_file_path} (original: {original_file_path})")
+                  
                   try:
-                      if not os.path.exists(file_path):
-                          print(f"Error: File not found - {file_path}. Skipping.")
+                      # Open file using the original path which is relative to CWD (workspace root)
+                      if not os.path.exists(original_file_path):
+                          print(f"Error: File not found - {original_file_path}. Skipping.")
                           continue
 
-                      with open(file_path, 'r', encoding='utf-8') as f:
+                      with open(original_file_path, 'r', encoding='utf-8', errors='ignore') as f:
                           file_content = f.read()
                       
                       if not file_content.strip():
-                          print(f"Skipping empty file: {file_path}")
+                          print(f"Skipping empty file: {original_file_path}")
                           continue
 
                       MAX_FILE_SIZE_CHARS = 100 * 1024 
                       if len(file_content) > MAX_FILE_SIZE_CHARS:
-                          print(f"Warning: File {file_path} is very large ({len(file_content)} chars). Truncating to {MAX_FILE_SIZE_CHARS} characters for AI analysis to manage token limits.")
+                          print(f"Warning: File {original_file_path} is very large ({len(file_content)} chars). Truncating to {MAX_FILE_SIZE_CHARS} characters for AI analysis.")
                           file_content = file_content[:MAX_FILE_SIZE_CHARS]
 
-                      identified_issues = call_openai_for_issues(file_path, file_content)
+                      # Pass the relative_file_path to AI for use in prompts and descriptions
+                      identified_issues = call_openai_for_issues(relative_file_path, file_content)
                       
                       if identified_issues is None:
-                          print(f"AI analysis failed for {file_path} after retries.")
+                          print(f"AI analysis failed for {relative_file_path} after retries.")
                       elif not identified_issues:
-                          print(f"AI found no specific issues to report for {file_path}.")
+                          print(f"AI found no specific issues to report for {relative_file_path}.")
                       else:
-                          print(f"AI identified {len(identified_issues)} potential issues for {file_path}.")
+                          print(f"AI identified {len(identified_issues)} potential issues for {relative_file_path}.")
                           for issue_data in identified_issues:
                               if not isinstance(issue_data, dict) or not all(k in issue_data for k in ["title", "description", "category"]):
-                                  print(f"Warning: Invalid issue format received from AI for {file_path}. Skipping: {issue_data}")
+                                  print(f"Warning: Invalid issue format received from AI for {relative_file_path}. Skipping: {issue_data}")
                                   continue
 
-                              path_for_filename = issue_data.get('file_path', file_path) 
-                              filename_only = os.path.basename(path_for_filename)
+                              # Use relative_file_path for issue creation
+                              filename_only = os.path.basename(relative_file_path) 
                               category_prefix = issue_data['category'].replace('_', ' ').title()
                               title = f"AI ({category_prefix}): {issue_data['title']} in `{filename_only}`"
                               
                               pr_number_env = os.getenv('PR_NUMBER')
                               pr_context = f"\n\n_Context: Analysis triggered by PR #{pr_number_env}_" if pr_number_env else ""
-                              body = f"**File:** `{file_path}`\n\n{issue_data['description']}{pr_context}"
+                              
+                              # Ensure file_path in description is relative
+                              description_with_relative_path = issue_data['description'].replace(original_file_path, relative_file_path)
+                              body = f"**File:** `{relative_file_path}`\n\n{description_with_relative_path}{pr_context}"
                               
                               category = issue_data['category'].lower()
                               labels = ["AI Suggested"]
@@ -349,14 +377,14 @@ jobs:
 
                               if create_github_issue(title, body, labels):
                                   total_issues_created += 1
-                              time.sleep(1) 
+                              time.sleep(1) # Be respectful to GitHub API
 
                   except FileNotFoundError:
-                      print(f"Error: File not found - {file_path}")
+                      print(f"Error: File not found - {original_file_path}")
                   except Exception as e:
-                      print(f"Error processing file {file_path}: {e}")
+                      print(f"Error processing file {original_file_path}: {e}")
                   
-                  if len(files_to_analyze) > 1 and i < len(files_to_analyze) - 1:
+                  if len(files_to_analyze_paths) > 1 and i < len(files_to_analyze_paths) - 1:
                       print(f"Waiting for {INTER_FILE_DELAY} seconds before processing the next file...")
                       time.sleep(INTER_FILE_DELAY)
               
