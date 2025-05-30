@@ -111,6 +111,9 @@ extern char mqttUser[64];
 extern char mqttPassword[64]; 
 extern char mqttBaseTopic[64];
 
+// MQTT Buffer Size
+#define MQTT_BUFFER_SIZE 1536
+
 // --- MQTT Discovery Configuration ---
 extern volatile bool isMqttDiscoveryEnabled; 
 extern char mqttDiscoveryPrefix[32];     
