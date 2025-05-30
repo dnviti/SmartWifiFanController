@@ -103,7 +103,7 @@ void displayMainMenu() {
 }
 
 void displayWiFiSettingsMenu() {
-    const char* items[] = {"WiFi:", "Scan Networks", "SSID:", "Password Set", "Connect WiFi", "DisconnectWiFi", "Back to Main"};
+    const char* items[] = {"WiFi:", "Scan Networks", "SSID:", "Password Set", "Connect WiFi", "Disconnect WiFi", "Back to Main"};
     const int numItems = 7; 
 
     for (int i = 0; i < 2; ++i) { 
