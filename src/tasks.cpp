@@ -21,7 +21,18 @@ void networkTask(void *pvParameters) {
         uint8_t mac[6];
         char hostname[32]; // "fancontrol-" is 11 chars, MAC is 12 chars, plus null terminator
         WiFi.macAddress(mac);
-        sprintf(hostname, "fancontrol-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        
+        // Use snprintf to prevent buffer overflow
+        int len = snprintf(hostname, sizeof(hostname),
+            "fancontrol-%02x%02x%02x%02x%02x%02x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        );
+
+        if (len < 0 || len >= sizeof(hostname)) {
+            if(serialDebugEnabled) Serial.println("[WiFi_ERR] Hostname formatting truncated or failed.");
+            // Optionally, handle this error, e.g., use a default hostname or reboot
+            // For now, proceed with potentially truncated hostname or whatever snprintf put in.
+        }
         
         if(serialDebugEnabled) Serial.printf("[WiFi] Setting hostname to: %s\n", hostname);
         if (!WiFi.setHostname(hostname)) {
