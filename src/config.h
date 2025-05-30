@@ -77,6 +77,15 @@ enum MenuScreen {
 extern volatile MenuScreen currentMenuScreen;
 extern volatile int selectedMenuItem;
 extern volatile int scanResultCount;
+
+// New enum for WiFi scan state
+enum WiFiScanState {
+    WIFI_SCAN_IDLE,
+    WIFI_SCAN_IN_PROGRESS,
+    WIFI_SCAN_COMPLETED
+};
+extern volatile WiFiScanState currentWiFiScanState; // Declare new state variable
+
 extern String scannedSSIDs[10]; 
 extern char passwordInputBuffer[64]; 
 extern char generalInputBuffer[128]; 
