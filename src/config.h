@@ -31,6 +31,14 @@ extern volatile bool ota_in_progress;
 extern String ota_status_message; 
 extern String GITHUB_API_ROOT_CA_STRING; // Extern declaration
 
+// --- Timing Constants (for tasks.cpp) ---
+constexpr unsigned long WEBSOCKET_PERIOD_MS       = 5000;
+constexpr unsigned long MQTT_STATUS_PERIOD_MS     = 30000;
+constexpr unsigned long MQTT_CURVE_PERIOD_MS      = 300000;
+constexpr unsigned long TEMP_READ_INTERVAL_MS     = 2000;
+constexpr unsigned long RPM_CALC_INTERVAL_MS      = 1000;
+constexpr TickType_t    MAIN_LOOP_DELAY_TICKS     = pdMS_TO_TICKS(50); // For vTaskDelay
+
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
 extern const int BTN_MENU_PIN;    

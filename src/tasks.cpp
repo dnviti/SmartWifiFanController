@@ -4,7 +4,7 @@
 #include "input_handler.h"   
 #include "fan_control.h"     
 #include "display_handler.h" 
-#include "mqtt_handler.h"    // Added for MQTT
+#include "mqtt_handler.h    // Added for MQTT
 #include <ElegantOTA.h>      // Added for OTA Updates
 #include <WiFi.h>            // Ensure WiFi is included for MAC address and hostname
 
@@ -106,7 +106,7 @@ void networkTask(void *pvParameters) {
                 if (isMqttEnabled) lastMqttStatusPublishTime = currentTime; // Reset MQTT periodic timer
             }
             // Periodic WebSocket broadcast
-            else if (currentTime - lastPeriodicBroadcastTime > 5000) {
+            else if (currentTime - lastPeriodicBroadcastTime > WEBSOCKET_PERIOD_MS) {
                  broadcastWebSocketData();
                  lastPeriodicBroadcastTime = currentTime;
             }
@@ -117,12 +117,12 @@ void networkTask(void *pvParameters) {
                 loopMQTT(); // Handles connection, client.loop(), and reconnections
                 
                 // Periodic status publish if not covered by needsImmediateBroadcast
-                if (mqttClient.connected() && (currentTime - lastMqttStatusPublishTime > 30000)) { // e.g., every 30 seconds
+                if (mqttClient.connected() && (currentTime - lastMqttStatusPublishTime > MQTT_STATUS_PERIOD_MS)) { // e.g., every 30 seconds
                      publishStatusMQTT();
                      lastMqttStatusPublishTime = currentTime;
                 }
                 // ADDED: Periodic fan curve publish (less frequent)
-                if (mqttClient.connected() && (currentTime - lastMqttCurvePublishTime > 300000)) { // e.g., every 5 minutes
+                if (mqttClient.connected() && (currentTime - lastMqttCurvePublishTime > MQTT_CURVE_PERIOD_MS)) { // e.g., every 5 minutes
                      publishFanCurveMQTT();
                      lastMqttCurvePublishTime = currentTime;
                 }
@@ -135,7 +135,7 @@ void networkTask(void *pvParameters) {
                  Serial.println("[WiFi] NetworkTask: WiFi disconnected. Waiting for reconnection or config change. OTA/Web/MQTT unavailable.");
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
+        vTaskDelay(MAIN_LOOP_DELAY_TICKS); // Standard delay for cooperative multitasking
     }
 }
 
@@ -160,7 +160,7 @@ void mainAppTask(void *pvParameters) {
         if (!isInMenuMode) { // Only perform these actions if not in menu
             // Read Temperature
             if (tempSensorFound) {
-                if (currentTime - lastTempReadTime > 2000) { // Read every 2 seconds
+                if (currentTime - lastTempReadTime > TEMP_READ_INTERVAL_MS) { // Read every 2 seconds
                     lastTempReadTime = currentTime;
                     float newTemp = bmp.readTemperature();
                     if (!isnan(newTemp)) { 
@@ -180,7 +180,7 @@ void mainAppTask(void *pvParameters) {
             }
 
             // Calculate RPM
-            if (currentTime - lastRpmCalculationTime > 1000) { // Calculate every 1 second
+            if (currentTime - lastRpmCalculationTime > RPM_CALC_INTERVAL_MS) { // Calculate every 1 second
                 lastRpmCalculationTime = currentTime;
                 noInterrupts(); 
                 unsigned long currentPulses = pulseCount;
@@ -222,13 +222,13 @@ void mainAppTask(void *pvParameters) {
             
             // Update LCD
             // Update more frequently if something changed, or every second regardless
-            if (currentTime - lastLcdUpdateTime > 1000 || needsImmediateBroadcast) { 
+            if (currentTime - lastLcdUpdateTime > RPM_CALC_INTERVAL_MS || needsImmediateBroadcast) { 
                 updateLCD_NormalMode();
                 lastLcdUpdateTime = currentTime;
             }
         } 
         // If in menu mode, displayMenu() is called by handleMenuInput() when changes occur.
         
-        vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
+        vTaskDelay(MAIN_LOOP_DELAY_TICKS); // Standard delay for cooperative multitasking
     }
 }
