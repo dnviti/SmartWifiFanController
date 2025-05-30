@@ -173,6 +173,12 @@ void loadMqttConfig() {
         if (serialDebugEnabled) Serial.println("[NVS_LOAD_ERR] Failed to open 'mqtt-cfg' for reading. Using default MQTT values.");
         // Defaults are already set in main.cpp, ensure isMqttEnabled is false if load fails
         isMqttEnabled = false;
+        // Explicitly reset other MQTT parameters to their defaults
+        strcpy(mqttServer, "your_mqtt_broker_ip");
+        mqttPort = 1883;
+        mqttUser[0] = '\0'; // Set to empty string
+        mqttPassword[0] = '\0'; // Set to empty string
+        strcpy(mqttBaseTopic, "fancontroller");
     }
 }
 
