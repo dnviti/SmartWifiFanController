@@ -1,0 +1,108 @@
+# .github/workflows/build_pipeline.yml
+name: Build Firmware & Filesystem
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      # Trigger on push to specific AI-generated branch patterns
+      - 'bugfix/ai-issue-*'
+      - 'feature/ai-issue-*'
+      - 'docs/ai-issue-*'
+      - 'refactor/ai-issue-*'
+      - 'fix/ai-issue-*'
+      # Broader GitFlow patterns for other development branches
+      - 'bugfix/**'
+      - 'feature/**'
+      - 'docs/**'
+      - 'refactor/**'
+      - 'fix/**'
+      - 'ai-fix/**' # A more generic catch-all if specific prefixes are missed
+  pull_request:
+    types: [opened, synchronize, reopened] 
+    branches:
+      - develop # Run for ANY PR targeting 'develop'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  build_firmware_and_filesystem:
+    # Conditional execution for the job:
+    if: |
+      (github.event_name == 'push' && (
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/develop' ||
+        startsWith(github.ref, 'refs/heads/bugfix/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/feature/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/docs/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/refactor/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/fix/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/bugfix/') ||
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/docs/') ||
+        startsWith(github.ref, 'refs/heads/refactor/') ||
+        startsWith(github.ref, 'refs/heads/fix/') ||
+        startsWith(github.ref, 'refs/heads/ai-fix/')
+      )) ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.base_ref == 'develop' 
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # From your release.yml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # From your release.yml
+
+      - name: Install PlatformIO Core
+        run: pip install -U platformio # From your release.yml
+
+      - name: Cache PlatformIO data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache # Added .cache for more comprehensive caching like in ci_build_test
+          key: ${{ runner.os }}-platformio-${{ hashFiles('**/platformio.ini') }}-${{ hashFiles('**/lockfiles') }} # Key from ci_build_test
+          restore-keys: | # From ci_build_test
+            ${{ runner.os }}-platformio-${{ hashFiles('**/platformio.ini') }}-
+            ${{ runner.os }}-platformio-
+
+      - name: Prepare data directory and Download CA Certificate
+        # This step is taken from your release.yml to ensure the filesystem is built correctly
+        # if the CA certificate is part of it.
+        run: |
+          mkdir -p data
+          # Using the CA download command from your provided release.yml
+          # Ensure this CA is appropriate and the filename matches your config.h
+          curl -L -o data/github_api_ca.pem https://cacerts.digicert.com/DigiCertGlobalRootCA.crt
+          if [ ! -s data/github_api_ca.pem ]; then
+            echo "Error: Failed to download or CA certificate file data/github_api_ca.pem is empty."
+            exit 1 # Fail the build if CA cert is critical for SPIFFS image
+          fi
+          echo "CA certificate downloaded to data/github_api_ca.pem"
+
+      - name: Set Build Environment Name
+        # This should match an environment in your platformio.ini and PIO_BUILD_ENV_NAME in config.h
+        run: echo "PIO_BUILD_ENV_NAME=esp32_fancontrol" >> $GITHUB_ENV # From your release.yml
+
+      - name: Build Firmware and SPIFFS Image
+        # Combined build step from your release.yml
+        run: |
+          echo "Building for PlatformIO environment: ${{ env.PIO_BUILD_ENV_NAME }}"
+          # Build firmware
+          platformio run -e ${{ env.PIO_BUILD_ENV_NAME }}
+          # Build SPIFFS image (this will include the downloaded CA certificate from the data/ directory)
+          platformio run -e ${{ env.PIO_BUILD_ENV_NAME }} --target buildfs
+        env:
+          PLATFORMIO_CI_SRC: ${{ github.workspace }} # From your release.yml
