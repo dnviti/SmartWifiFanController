@@ -40,7 +40,7 @@ volatile int fanRpm = 0;
 volatile int fanSpeedPercentage = 0;
 volatile int fanSpeedPWM_Raw = 0;
 volatile unsigned long pulseCount = 0;
-unsigned long lastRpmReadTime_Task = 0; 
+volatile unsigned long lastRpmReadTime_Task = 0; // Marked volatile as it's shared across contexts (tasks/timing)
 
 // Menu System Variables
 volatile MenuScreen currentMenuScreen = MAIN_MENU;
