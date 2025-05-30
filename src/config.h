@@ -49,19 +49,10 @@ extern const int PWM_RESOLUTION_BITS;
 extern const int AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE;
 extern const int PULSES_PER_REVOLUTION;
 
-// --- Modes & States (Global Volatile Variables) ---
-extern volatile bool isAutoMode;
-extern volatile int manualFanSpeedPercentage;
+// --- Modes & States (Global Volatile Variables - non-fan related) ---
 extern volatile bool isInMenuMode;
 extern volatile bool isWiFiEnabled; 
 extern volatile bool serialDebugEnabled; 
-extern volatile float currentTemperature; 
-extern volatile bool tempSensorFound;      
-extern volatile int fanRpm;
-extern volatile int fanSpeedPercentage;
-extern volatile int fanSpeedPWM_Raw;
-extern volatile unsigned long pulseCount; // For ISR
-extern unsigned long lastRpmReadTime_Task; 
 
 // --- Menu System Variables ---
 enum MenuScreen { 
@@ -87,20 +78,15 @@ extern volatile char currentGeneralEditChar;
 extern volatile int passwordCharIndex; 
 extern volatile char currentPasswordEditChar; 
 
-// --- Fan Curve ---
+// --- Fan Curve (Constants only, actual data is in FanController) ---
 const int MAX_CURVE_POINTS = 8; 
-extern int tempPoints[MAX_CURVE_POINTS];
-extern int pwmPercentagePoints[MAX_CURVE_POINTS];
-extern int numCurvePoints;
-extern volatile bool fanCurveChanged; 
 
-// Staging Fan Curve for Serial Commands
+// Staging Fan Curve for Serial Commands (these remain global as they are input-specific, not core fan state)
 extern int stagingTempPoints[MAX_CURVE_POINTS];
 extern int stagingPwmPercentagePoints[MAX_CURVE_POINTS];
 extern int stagingNumCurvePoints;
 
 // --- Task Communication ---
-extern volatile bool needsImmediateBroadcast; 
 extern volatile bool rebootNeeded; 
 
 // --- MQTT Configuration ---
@@ -116,12 +102,6 @@ extern volatile bool isMqttDiscoveryEnabled;
 extern char mqttDiscoveryPrefix[32];     
 extern char mqttDeviceId[64];            
 extern char mqttDeviceName[64];          
-
-// --- OTA Update Status ---
-extern volatile bool ota_in_progress;
-extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
-
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;
