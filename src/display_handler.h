@@ -13,6 +13,7 @@ void displayWiFiSettingsMenu();
 void displayWiFiScanMenu();
 void displayPasswordEntryMenu();
 void displayWiFiStatusMenu(); 
+void displaySsidEntryMenu(); // Added for manual SSID entry
 void displayConfirmRebootMenu();
 
 // MQTT Menu Display Functions
