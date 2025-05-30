@@ -143,9 +143,9 @@ void networkTask(void *pvParameters) {
 void mainAppTask(void *pvParameters) {
     if(serialDebugEnabled) Serial.println("[TASK] Main Application Task started on Core 1.");
     unsigned long lastTempReadTime = 0;
-    unsigned long lastRpmCalculationTime = 0;
+    unsigned long lastRpmTimestamp = 0; // Renamed from lastRpmCalculationTime, initialized to 0
     unsigned long lastLcdUpdateTime = 0;
-    lastRpmReadTime_Task = millis(); // Initialize for RPM calculation
+    // Removed: lastRpmReadTime_Task = millis(); // This line is removed
 
     if (isInMenuMode) displayMenu(); else updateLCD_NormalMode();
 
@@ -180,16 +180,17 @@ void mainAppTask(void *pvParameters) {
             }
 
             // Calculate RPM
-            if (currentTime - lastRpmCalculationTime > 1000) { // Calculate every 1 second
-                lastRpmCalculationTime = currentTime;
+            if (currentTime - lastRpmTimestamp >= 1000) { // Calculate every 1 second
+                unsigned long previousRpmTimestamp = lastRpmTimestamp; // Store the timestamp from the *start* of the previous cycle
+                lastRpmTimestamp = currentTime; // Update for the *next* cycle's start
+
                 noInterrupts(); 
                 unsigned long currentPulses = pulseCount;
                 pulseCount = 0; 
                 interrupts(); 
                 
-                unsigned long elapsedMillis = currentTime - lastRpmReadTime_Task;
-                lastRpmReadTime_Task = currentTime; 
-
+                unsigned long elapsedMillis = currentTime - previousRpmTimestamp; // This is the actual duration over which pulses were counted
+                
                 int newRpm = 0;
                 if (elapsedMillis > 0 && PULSES_PER_REVOLUTION > 0) {
                     newRpm = (currentPulses / (float)PULSES_PER_REVOLUTION) * (60000.0f / elapsedMillis);
