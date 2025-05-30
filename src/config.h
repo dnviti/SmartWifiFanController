@@ -61,7 +61,7 @@ extern volatile int fanRpm;
 extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
 extern volatile unsigned long pulseCount; // For ISR
-extern unsigned long lastRpmReadTime_Task; 
+// Removed: extern unsigned long lastRpmReadTime_Task; 
 
 // --- Menu System Variables ---
 enum MenuScreen { 
