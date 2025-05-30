@@ -1,8 +1,11 @@
 #include "fan_control.h"
 #include "config.h" // For global variables
 
+// Define a named constant for the default number of curve points
+static constexpr int DEFAULT_CURVE_POINT_COUNT = 5;
+
 void setDefaultFanCurve() {
-    numCurvePoints = 5;
+    numCurvePoints = DEFAULT_CURVE_POINT_COUNT;
     tempPoints[0] = 25; pwmPercentagePoints[0] = 0;  
     tempPoints[1] = 35; pwmPercentagePoints[1] = 20; 
     tempPoints[2] = 45; pwmPercentagePoints[2] = 50; 
