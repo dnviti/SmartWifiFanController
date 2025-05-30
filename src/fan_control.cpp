@@ -1,13 +1,27 @@
 #include "fan_control.h"
-#include "config.h" // For global variables
+#include "config.h" // For global variables and MAX_CURVE_POINTS, DEFAULT_CURVE_POINT_COUNT
+
+// Define the default curve points
+// These arrays are sized using DEFAULT_CURVE_POINT_COUNT defined in config.h
+static const int DEFAULT_TEMP_POINTS[DEFAULT_CURVE_POINT_COUNT] = {25, 35, 45, 55, 60};
+static const int DEFAULT_PWM_POINTS[DEFAULT_CURVE_POINT_COUNT] = {0, 20, 50, 80, 100};
 
 void setDefaultFanCurve() {
-    numCurvePoints = 5;
-    tempPoints[0] = 25; pwmPercentagePoints[0] = 0;  
-    tempPoints[1] = 35; pwmPercentagePoints[1] = 20; 
-    tempPoints[2] = 45; pwmPercentagePoints[2] = 50; 
-    tempPoints[3] = 55; pwmPercentagePoints[3] = 80; 
-    tempPoints[4] = 60; pwmPercentagePoints[4] = 100;
+    // The static_assert in config.h already ensures DEFAULT_CURVE_POINT_COUNT <= MAX_CURVE_POINTS at compile time.
+    // This runtime check is included as a defensive measure, as suggested in the issue,
+    // although it should ideally be unreachable if the static_assert passes.
+    if (DEFAULT_CURVE_POINT_COUNT > MAX_CURVE_POINTS) {
+        if(serialDebugEnabled) Serial.println("[SYSTEM_ERR] Default fan curve definition exceeds MAX_CURVE_POINTS! Truncating.");
+        numCurvePoints = MAX_CURVE_POINTS; // Clamp to max capacity to prevent overflow
+    } else {
+        numCurvePoints = DEFAULT_CURVE_POINT_COUNT;
+    }
+
+    // Populate the fan curve arrays using the default points
+    for (int i = 0; i < numCurvePoints; ++i) {
+        tempPoints[i] = DEFAULT_TEMP_POINTS[i];
+        pwmPercentagePoints[i] = DEFAULT_PWM_POINTS[i];
+    }
     if(serialDebugEnabled) Serial.println("[SYSTEM] Default fan curve set.");
 }
 
