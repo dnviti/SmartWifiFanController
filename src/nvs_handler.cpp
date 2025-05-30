@@ -29,17 +29,18 @@ void loadWiFiConfig() {
             if(serialDebugEnabled) Serial.println("[NVS_LOAD] 'wifiEn' key NOT found. Defaulting isWiFiEnabled to false.");
         }
         
-        // Only copy if the stored value is different and valid
-        if (stored_ssid.length() > 0 && stored_ssid.length() < sizeof(current_ssid)) {
-             if (strcmp(current_ssid, stored_ssid.c_str()) != 0) { 
-                strcpy(current_ssid, stored_ssid.c_str());
-             }
+        // Use strncpy for safer string copying, ensuring null termination and handling truncation.
+        // Only copy if the stored value is different to avoid unnecessary operations.
+        if (strcmp(current_ssid, stored_ssid.c_str()) != 0) { 
+            strncpy(current_ssid, stored_ssid.c_str(), sizeof(current_ssid) - 1);
+            current_ssid[sizeof(current_ssid) - 1] = '\0'; // Ensure null termination
         }
-        if (stored_password.length() < sizeof(current_password)) { // Allow empty password
-            if (strcmp(current_password, stored_password.c_str()) != 0) {
-                strcpy(current_password, stored_password.c_str());
-            }
+        
+        if (strcmp(current_password, stored_password.c_str()) != 0) {
+            strncpy(current_password, stored_password.c_str(), sizeof(current_password) - 1);
+            current_password[sizeof(current_password) - 1] = '\0'; // Ensure null termination
         }
+        
         preferences.end();
         if(serialDebugEnabled) Serial.printf("[NVS] Effective WiFi Config after load: SSID='%s', Enabled=%s\n", current_ssid, isWiFiEnabled ? "Yes" : "No");
 
@@ -47,8 +48,12 @@ void loadWiFiConfig() {
         if(serialDebugEnabled) Serial.println("[NVS_LOAD_ERR] Failed to open 'wifi-cfg' for reading. isWiFiEnabled defaults to false.");
         isWiFiEnabled = false; 
         // Set default SSID/Pass if loading failed entirely, though getString defaults should handle it
-        strcpy(current_ssid, "YOUR_WIFI_SSID");
-        strcpy(current_password, "YOUR_WIFI_PASSWORD");
+        // These defaults are already set in main.cpp, but setting them here ensures consistency
+        // if NVS read fails completely. Use strncpy for safety, even with known-safe literals.
+        strncpy(current_ssid, "YOUR_WIFI_SSID", sizeof(current_ssid) - 1);
+        current_ssid[sizeof(current_ssid) - 1] = '\0';
+        strncpy(current_password, "YOUR_WIFI_PASSWORD", sizeof(current_password) - 1);
+        current_password[sizeof(current_password) - 1] = '\0';
     }
 }
 
