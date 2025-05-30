@@ -1,5 +1,4 @@
-#ifndef NVS_HANDLER_H
-#define NVS_HANDLER_H
+#pragma once
 
 #include "config.h"
 
@@ -15,5 +14,3 @@ void loadMqttConfig();
 // MQTT Discovery NVS Functions - ADDED
 void saveMqttDiscoveryConfig();
 void loadMqttDiscoveryConfig();
-
-#endif // NVS_HANDLER_H
