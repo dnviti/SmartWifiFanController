@@ -89,6 +89,11 @@ extern volatile char currentPasswordEditChar;
 
 // --- Fan Curve ---
 const int MAX_CURVE_POINTS = 8; 
+#define DEFAULT_CURVE_POINT_COUNT 5 // The default fan curve has 5 points
+
+// Compile-time check to ensure MAX_CURVE_POINTS is sufficient for the default fan curve.
+static_assert(MAX_CURVE_POINTS >= DEFAULT_CURVE_POINT_COUNT, "Increase MAX_CURVE_POINTS in config.h to accommodate the default fan curve.");
+
 extern int tempPoints[MAX_CURVE_POINTS];
 extern int pwmPercentagePoints[MAX_CURVE_POINTS];
 extern int numCurvePoints;
