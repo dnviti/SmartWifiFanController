@@ -1,5 +1,5 @@
-#ifndef INPUT_HANDLER_H
-#define INPUT_HANDLER_H
+#ifndef SMARTWIFI_FANCONTROLLER_INPUT_HANDLER_H
+#define SMARTWIFI_FANCONTROLLER_INPUT_HANDLER_H
 
 #include "config.h"
 #include "ota_updater.h" // Include for triggerOTAUpdateCheck
@@ -10,4 +10,4 @@ void performWiFiScan();
 void attemptWiFiConnection(); 
 void disconnectWiFi(); 
 
-#endif // INPUT_HANDLER_H
+#endif // SMARTWIFI_FANCONTROLLER_INPUT_HANDLER_H
