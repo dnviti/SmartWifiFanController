@@ -28,8 +28,8 @@
 
 // --- OTA Update Status ---
 extern volatile bool ota_in_progress;
-extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Extern declaration
+extern char ota_status_message[128]; // Changed from String to char array
+extern char GITHUB_API_ROOT_CA_STRING[2048]; // Changed from String to char array, increased size for CA
 
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
@@ -77,7 +77,7 @@ enum MenuScreen {
 extern volatile MenuScreen currentMenuScreen;
 extern volatile int selectedMenuItem;
 extern volatile int scanResultCount;
-extern String scannedSSIDs[10]; 
+extern char scannedSSIDs[10][33]; // Changed from String to char array, 32 chars + null terminator
 extern char passwordInputBuffer[64]; 
 extern char generalInputBuffer[128]; 
 extern volatile int generalInputCharIndex;
@@ -119,8 +119,8 @@ extern char mqttDeviceName[64];
 
 // --- OTA Update Status ---
 extern volatile bool ota_in_progress;
-extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
+extern char ota_status_message[128]; // Changed from String to char array
+extern char GITHUB_API_ROOT_CA_STRING[2048]; // Changed from String to char array
 
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
