@@ -37,8 +37,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'pull_request' &&
-        github.base_ref == 'develop' 
-        # No longer filtering by head_ref for PRs to develop, runs for all PRs targeting develop
+        github.base_ref == 'develop'
       )
     runs-on: ubuntu-latest
 
