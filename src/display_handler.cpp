@@ -1,6 +1,19 @@
 #include "display_handler.h"
 #include "config.h" // For global variables and lcd object
 
+/**
+ * @brief Renders the two lines of information in normal operating mode (not in menu).
+ * 
+ * This function clears the LCD and displays the current operating mode (AUTO/MANUAL),
+ * WiFi status (IP address, "WiFi ON/OFF/...", MQTT status (M/mD),
+ * current temperature, fan speed percentage, and fan RPM.
+ * 
+ * @note Depends on global flags: `isAutoMode`, `isWiFiEnabled`, `isMqttEnabled`,
+ * `isMqttDiscoveryEnabled`, `tempSensorFound`.
+ * @note Depends on global variables: `currentTemperature`, `fanSpeedPercentage`, `fanRpm`,
+ * `WiFi.status()`, `WiFi.localIP()`, `mqttClient.connected()`.
+ * @sideeffect Clears and prints to the global `lcd` object.
+ */
 void updateLCD_NormalMode() { 
     lcd.clear();
     lcd.setCursor(0, 0);
@@ -64,6 +77,15 @@ void updateLCD_NormalMode() {
     lcd.print(line1.substring(0,16)); 
 }
 
+/**
+ * @brief Dispatches to the appropriate menu display function based on the current menu screen.
+ * 
+ * This function clears the LCD and then calls the specific display function
+ * corresponding to the `currentMenuScreen` global variable.
+ * 
+ * @note Depends on the global `currentMenuScreen` variable.
+ * @sideeffect Clears the global `lcd` object and calls other display functions.
+ */
 void displayMenu() {
     lcd.clear();
     switch (currentMenuScreen) {
@@ -88,6 +110,16 @@ void displayMenu() {
     }
 }
 
+/**
+ * @brief Displays the main menu options on the LCD.
+ * 
+ * The main menu includes options for WiFi Settings, MQTT Settings, OTA Update,
+ * and View Status (which exits the menu). The currently selected item
+ * (indicated by `selectedMenuItem`) is prefixed with a '>'.
+ * 
+ * @note Depends on the global `selectedMenuItem` variable.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayMainMenu() {
     // Adjusted for 3 items: WiFi, MQTT, OTA Update, View Status (Exit)
     const char* items[] = {"WiFi Settings", "MQTT Settings", "OTA Update", "View Status"};
@@ -102,6 +134,16 @@ void displayMainMenu() {
     }
 }
 
+/**
+ * @brief Displays the WiFi settings menu on the LCD.
+ * 
+ * This menu allows enabling/disabling WiFi, scanning networks, viewing/setting SSID,
+ * setting password, connecting/disconnecting, and returning to the main menu.
+ * It shows the current state of `isWiFiEnabled` and `current_ssid`.
+ * 
+ * @note Depends on global variables: `selectedMenuItem`, `isWiFiEnabled`, `current_ssid`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayWiFiSettingsMenu() {
     const char* items[] = {"WiFi:", "Scan Networks", "SSID:", "Password Set", "Connect WiFi", "DisconnectWiFi", "Back to Main"};
     const int numItems = 7; 
@@ -145,6 +187,16 @@ void displayWiFiSettingsMenu() {
     }
 }
 
+/**
+ * @brief Displays the WiFi network scan results or a "scanning" message on the LCD.
+ * 
+ * If a scan is in progress (`scanResultCount == -1`), it shows a "Scanning..." message.
+ * If no networks are found (`scanResultCount == 0`), it indicates that.
+ * Otherwise, it displays the currently selected network from the `scannedSSIDs` list.
+ * 
+ * @note Depends on global variables: `scanResultCount`, `selectedMenuItem`, `scannedSSIDs`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayWiFiScanMenu() {
     lcd.setCursor(0,0);
     if (scanResultCount == -1) { 
@@ -171,6 +223,17 @@ void displayWiFiScanMenu() {
     }
 }
 
+/**
+ * @brief Displays the WiFi password entry screen on the LCD.
+ * 
+ * Shows "WiFi Password:" on the first line and the masked password input
+ * (asterisks for entered characters, plus the `currentPasswordEditChar`)
+ * on the second line. Includes a "[OK?]" prompt when the buffer is nearly full.
+ * 
+ * @note Depends on global variables: `passwordCharIndex`, `currentPasswordEditChar`,
+ * `passwordInputBuffer`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayPasswordEntryMenu() { 
     lcd.setCursor(0,0); lcd.print("WiFi Password:");
     String passMask = "";
@@ -184,6 +247,15 @@ void displayPasswordEntryMenu() {
     lcd.setCursor(0,1); lcd.print(passMask.substring(0,16));
 }
 
+/**
+ * @brief Displays the current WiFi connection status on the LCD.
+ * 
+ * Shows whether WiFi is enabled, and if so, its connection status (connected/connecting)
+ * and the assigned IP address if connected.
+ * 
+ * @note Depends on global variables: `isWiFiEnabled`, `WiFi.status()`, `WiFi.localIP()`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayWiFiStatusMenu(){ 
     lcd.setCursor(0,0); lcd.print("WiFi: "); lcd.print(isWiFiEnabled ? "ON" : "OFF");
     lcd.setCursor(0,1);
@@ -196,6 +268,15 @@ void displayWiFiStatusMenu(){
     }
 }
 
+/**
+ * @brief Displays a confirmation screen for rebooting the device.
+ * 
+ * Presents "Reboot needed!" on the first line and "Yes" / "No" options
+ * on the second line, with the `selectedMenuItem` indicating the chosen option.
+ * 
+ * @note Depends on the global `selectedMenuItem` variable.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayConfirmRebootMenu() {
     lcd.setCursor(0,0); lcd.print("Reboot needed!");
     String line1 = (selectedMenuItem == 0 ? ">Yes " : " Yes ");
@@ -203,6 +284,17 @@ void displayConfirmRebootMenu() {
     lcd.setCursor(0,1); lcd.print(line1);
 }
 
+/**
+ * @brief Displays the MQTT settings menu on the LCD.
+ * 
+ * This menu allows enabling/disabling MQTT, setting broker server, port,
+ * username, password, base topic, and navigating to discovery settings.
+ * It shows the current state of `isMqttEnabled` and other MQTT configuration variables.
+ * 
+ * @note Depends on global variables: `selectedMenuItem`, `isMqttEnabled`, `mqttServer`,
+ * `mqttPort`, `mqttUser`, `mqttPassword`, `mqttBaseTopic`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayMqttSettingsMenu() {
     const char* items[] = {"MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Discovery Cfg", "Back to Main"};
     const int numItems = 8; 
@@ -250,6 +342,27 @@ void displayMqttSettingsMenu() {
     }
 }
 
+/**
+ * @brief Displays a generic input screen for various MQTT settings.
+ * 
+ * This function is used for entering text or numeric values for MQTT server,
+ * port, user, password, base topic, and discovery prefix. It shows a prompt
+ * on the first line and the currently entered characters (masked if `isPassword`)
+ * on the second line.
+ * 
+ * @param prompt The text prompt to display on the first line (e.g., "MQTT Server:").
+ * @param currentValue The current value of the field being edited. This parameter
+ *                     is primarily used for initialization in `input_handler.cpp`
+ *                     and not directly for display within this function, which
+ *                     uses `generalInputBuffer`.
+ * @param isPassword True if the input should be masked with asterisks.
+ * @param isNumericOnly True if only numeric characters are expected (affects character cycling in `input_handler`).
+ * @param maxLength The maximum allowed length for the input string.
+ * 
+ * @note Depends on global variables: `generalInputCharIndex`, `currentGeneralEditChar`,
+ * `generalInputBuffer`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly, int maxLength) {
     lcd.setCursor(0,0); lcd.print(String(prompt).substring(0,16));
     
@@ -268,6 +381,16 @@ void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isP
     lcd.setCursor(0,1); lcd.print(valueToShow.substring(0,16));
 }
 
+/**
+ * @brief Displays the MQTT Home Assistant Discovery settings menu on the LCD.
+ * 
+ * This menu allows enabling/disabling MQTT Discovery and setting the discovery prefix.
+ * It shows the current state of `isMqttDiscoveryEnabled` and `mqttDiscoveryPrefix`.
+ * 
+ * @note Depends on global variables: `selectedMenuItem`, `isMqttDiscoveryEnabled`,
+ * `mqttDiscoveryPrefix`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayMqttDiscoverySettingsMenu() {
     const char* items[] = {"Discovery:", "Prefix:", "Back"};
     const int numItems = 3;
@@ -305,7 +428,17 @@ void displayMqttDiscoverySettingsMenu() {
     }
 }
 
-// New function to display OTA Update screen
+/**
+ * @brief Displays the OTA (Over-The-Air) update screen on the LCD.
+ * 
+ * If an OTA update is in progress, it shows "OTA In Progress:" and the
+ * `ota_status_message`. Otherwise, it displays "Firmware Update" and
+ * options to "Check & Update" or "Back to Main", or the last status message.
+ * 
+ * @note Depends on global variables: `ota_in_progress`, `ota_status_message`,
+ * `selectedMenuItem`.
+ * @sideeffect Prints to the global `lcd` object.
+ */
 void displayOtaUpdateMenu() {
     lcd.setCursor(0, 0);
     if (ota_in_progress) {
