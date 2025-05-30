@@ -6,22 +6,52 @@ on:
     branches:
       - main
       - develop
-      # Trigger on push to branches created by the AI (or other feature/fix branches)
+      # Trigger on push to specific AI-generated branch patterns
+      - 'bugfix/ai-issue-*'
+      - 'feature/ai-issue-*'
+      - 'docs/ai-issue-*'
+      - 'refactor/ai-issue-*'
+      - 'fix/ai-issue-*'
+      # Broader GitFlow patterns for other development branches
       - 'bugfix/**'
       - 'feature/**'
       - 'docs/**'
       - 'refactor/**'
       - 'fix/**'
-      - 'ai-fix/**' # Generic catch-all for AI branches if specific prefixes are not used
+      - 'ai-fix/**' # A more generic catch-all if specific prefixes are missed
   pull_request:
     types: [opened, synchronize, reopened] 
     branches:
-      - develop # Only when the PR is targeting the 'develop' branch
+      - develop # Run for ANY PR targeting 'develop'
   # Allow manual triggering
   workflow_dispatch:
 
 jobs:
   build_and_test:
+    # Conditional execution for the job:
+    if: |
+      (github.event_name == 'push' && (
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/develop' ||
+        startsWith(github.ref, 'refs/heads/bugfix/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/feature/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/docs/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/refactor/ai-issue-') ||
+        startsWith(github.ref, 'refs/heads/fix/ai-issue-') ||
+        # Also cover the broader GitFlow patterns for pushes
+        startsWith(github.ref, 'refs/heads/bugfix/') ||  # Note: This will include ai-issue branches too
+        startsWith(github.ref, 'refs/heads/feature/') || # Note: This will include ai-issue branches too
+        startsWith(github.ref, 'refs/heads/docs/') ||    # Note: This will include ai-issue branches too
+        startsWith(github.ref, 'refs/heads/refactor/') ||# Note: This will include ai-issue branches too
+        startsWith(github.ref, 'refs/heads/fix/') ||     # Note: This will include ai-issue branches too
+        startsWith(github.ref, 'refs/heads/ai-fix/')     # Ensures generic ai-fix prefix is caught
+      )) ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.base_ref == 'develop' 
+        # Runs for all PRs targeting develop, as per your last request
+      )
     runs-on: ubuntu-latest
 
     steps:
