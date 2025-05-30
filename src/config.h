@@ -29,7 +29,7 @@
 // --- OTA Update Status ---
 extern volatile bool ota_in_progress;
 extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Extern declaration
+extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
 
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
@@ -116,12 +116,6 @@ extern volatile bool isMqttDiscoveryEnabled;
 extern char mqttDiscoveryPrefix[32];     
 extern char mqttDeviceId[64];            
 extern char mqttDeviceName[64];          
-
-// --- OTA Update Status ---
-extern volatile bool ota_in_progress;
-extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
-
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;
