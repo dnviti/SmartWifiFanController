@@ -31,6 +31,10 @@ extern volatile bool ota_in_progress;
 extern String ota_status_message; 
 extern String GITHUB_API_ROOT_CA_STRING; // Extern declaration
 
+// --- LCD Configuration ---
+static constexpr uint8_t LCD_COLS = 16; // LCD display columns
+static constexpr uint8_t LCD_ROWS = 2;  // LCD display rows
+
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
 extern const int BTN_MENU_PIN;    
