@@ -17,14 +17,15 @@
 #include <SPIFFS.h>       // For loading CA from SPIFFS
 
 // --- Firmware Version ---
-#define FIRMWARE_VERSION "0.1.2" // Define firmware version
-#define PIO_BUILD_ENV_NAME "esp32_fancontrol" // MUST MATCH 'PIO_ENV' in GitHub Actions release.yml
+static constexpr char FIRMWARE_VERSION[] = "0.1.2"; // Define firmware version
+static constexpr char PIO_BUILD_ENV_NAME[] = "esp32_fancontrol"; // MUST MATCH 'PIO_ENV' in GitHub Actions release.yml
 
 // --- GitHub OTA Configuration ---
-#define GITHUB_REPO_OWNER "dnviti"
-#define GITHUB_REPO_NAME "SmartWifiFanController"
-#define GITHUB_API_LATEST_RELEASE_URL "https://api.github.com/repos/" GITHUB_REPO_OWNER "/" GITHUB_REPO_NAME "/releases/latest"
-#define GITHUB_ROOT_CA_FILENAME "/github_root_ca.pem" // Filename on SPIFFS for the Root CA
+static constexpr char GITHUB_REPO_OWNER[] = "dnviti";
+static constexpr char GITHUB_REPO_NAME[] = "SmartWifiFanController";
+// The full URL is constructed directly as a constexpr string literal
+static constexpr char GITHUB_API_LATEST_RELEASE_URL[] = "https://api.github.com/repos/dnviti/SmartWifiFanController/releases/latest";
+static constexpr char GITHUB_ROOT_CA_FILENAME[] = "/github_root_ca.pem"; // Filename on SPIFFS for the Root CA
 
 // --- OTA Update Status ---
 extern volatile bool ota_in_progress;
