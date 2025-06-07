@@ -24,31 +24,55 @@ void drawStatusScreen() {
     String rpmStr = String(fanRpm) + "rpm";
     u8g2.drawStr(128 - u8g2.getStrWidth(rpmStr.c_str()), 22, rpmStr.c_str());
     
-    // Line 3: WiFi and MQTT Status indicators
+    // Line 3: Cycling Information View
     u8g2.setFont(u8g2_font_6x10_tr); // Use a text font
-    if (isWiFiEnabled) {
-        if (WiFi.status() == WL_CONNECTED) {
-            u8g2.drawStr(0, 31, WiFi.localIP().toString().c_str());
-
-            if(isMqttEnabled) {
-                int mqtt_icon_x = u8g2.getStrWidth(WiFi.localIP().toString().c_str()) + 4;
-                if (mqtt_icon_x < 118) {
-                    u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
-                    u8g2.drawGlyph(mqtt_icon_x, 32, (mqttClient.connected() ? 81 : 82)); 
+    switch(currentStatusScreenView) {
+        case INFO_IP:
+            if (isWiFiEnabled) {
+                if (WiFi.status() == WL_CONNECTED) {
+                    u8g2.drawStr(0, 31, WiFi.localIP().toString().c_str());
+                } else {
+                    u8g2.drawStr(0, 31, "WiFi Connecting...");
                 }
+            } else {
+                u8g2.drawStr(0, 31, "WiFi OFF");
             }
-        } else {
-            u8g2.drawStr(0, 31, "WiFi Connecting...");
+            break;
+        case INFO_MQTT:
+            if (isMqttEnabled) {
+                String mqtt_str = "MQTT: ";
+                mqtt_str += mqttClient.connected() ? "OK" : "Connecting";
+                u8g2.drawStr(0, 31, mqtt_str.c_str());
+            } else {
+                u8g2.drawStr(0, 31, "MQTT OFF");
+            }
+            break;
+        case INFO_UPTIME: {
+            unsigned long now = millis();
+            unsigned long sec = now / 1000;
+            unsigned long min = sec / 60;
+            unsigned long hr = min / 60;
+            unsigned long days = hr / 24;
+            String uptimeStr = "Up: " + String(days) + "d " + String(hr % 24) + "h " + String(min % 60) + "m";
+            u8g2.drawStr(0, 31, uptimeStr.c_str());
+            break;
         }
-    } else {
-        u8g2.drawStr(0, 31, "WiFi OFF");
+        case INFO_VERSION:
+            u8g2.drawStr(0, 31, FIRMWARE_VERSION);
+            break;
+        case INFO_MENU_HINT:
+            u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
+            u8g2.drawGlyph(0, 32, 155); // Menu icon
+            u8g2.setFont(u8g2_font_6x10_tr);
+            u8g2.drawStr(10, 31, "Menu");
+            break;
+        default:
+             u8g2.drawStr(0, 31, "...");
+             break;
     }
 
-    // FIX: Draw the menu hint icon on the status screen itself if requested
-    if (showMenuHint) {
-        u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
-        u8g2.drawGlyph(120, 32, 155); // Menu icon
-    } else if (rebootNeeded) { // Only show reboot if hint isn't showing
+    // Reboot needed indicator is always on the right if needed
+    if (rebootNeeded) {
         u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
         u8g2.drawGlyph(120, 32, 178); // Reload icon
     }
@@ -161,7 +185,6 @@ void drawMenuScreen() {
 void updateDisplay() {
   u8g2.firstPage();
   do {
-    // FIX: The hint is now part of the status screen, not a separate screen.
     if (isInMenuMode) {
       drawMenuScreen();
     } else {

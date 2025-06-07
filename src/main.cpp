@@ -41,7 +41,6 @@ volatile int fanSpeedPercentage = 0;
 volatile int fanSpeedPWM_Raw = 0;
 volatile unsigned long pulseCount = 0;
 unsigned long lastRpmReadTime_Task = 0; 
-// FIX: Definition for the status screen view state was missing.
 volatile StatusScreenView currentStatusScreenView = INFO_IP;
 
 // Menu System Variables

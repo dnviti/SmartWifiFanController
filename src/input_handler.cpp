@@ -34,7 +34,6 @@ void scanI2C() {
 void handleMenuInput() {
     bool button_states[5]; 
     int button_pins[5] = {BTN_MENU_PIN, BTN_UP_PIN, BTN_DOWN_PIN, BTN_SELECT_PIN, BTN_BACK_PIN};
-    // FIX: Add button names for logging joystick presses
     const char* button_names[5] = {"RIGHT (MENU)", "UP", "DOWN", "MIDDLE (SELECT)", "LEFT (BACK)"};
     unsigned long currentTime = millis();
 
@@ -44,15 +43,13 @@ void handleMenuInput() {
             buttonPressTime[i] = currentTime;
             buttonPressedState[i] = true;
 
-            // FIX: Log which joystick button was pressed when in debug mode
             if (serialDebugEnabled) {
                 Serial.printf("[INPUT] Joystick press: %s\n", button_names[i]);
             }
 
             // --- Logic for when NOT in menu mode ---
             if (!isInMenuMode) {
-                // BTN_MENU_PIN (joystick right) enters menu directly.
-                if (i == 0) { 
+                if (i == 0) { // RIGHT enters menu
                     isInMenuMode = true;
                     showMenuHint = false; 
                     if(serialDebugEnabled) Serial.println("[MENU] Entered Menu Mode via Menu Button.");
@@ -60,14 +57,13 @@ void handleMenuInput() {
                     selectedMenuItem = 0;
                     ota_status_message = "OTA Idle";
                 } 
-                else if (i == 1) { // UP
-                    currentStatusScreenView = (StatusScreenView)((currentStatusScreenView + 3) % 4); // Total 4 views
+                else if (i == 1) { // UP cycles info
+                    currentStatusScreenView = (StatusScreenView)((currentStatusScreenView + INFO_VIEW_COUNT - 1) % INFO_VIEW_COUNT);
                 }
-                else if (i == 2) { // DOWN
-                    currentStatusScreenView = (StatusScreenView)((currentStatusScreenView + 1) % 4);
+                else if (i == 2) { // DOWN cycles info
+                    currentStatusScreenView = (StatusScreenView)((currentStatusScreenView + 1) % INFO_VIEW_COUNT);
                 }
-                else {
-                    // Any other button press (LEFT, SELECT) shows the menu hint temporarily.
+                else { // LEFT or SELECT shows temp hint
                     showMenuHint = true;
                     menuHintStartTime = millis();
                 }

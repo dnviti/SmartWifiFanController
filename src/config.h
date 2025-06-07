@@ -17,7 +17,7 @@
 #include <SPIFFS.h>       
 
 // --- Firmware Version ---
-#define FIRMWARE_VERSION "0.1.5" // Define firmware version
+#define FIRMWARE_VERSION "0.1.6" // Define firmware version
 #define PIO_BUILD_ENV_NAME "esp32_fancontrol" 
 
 // --- GitHub OTA Configuration ---
@@ -62,12 +62,16 @@ extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
 extern volatile unsigned long pulseCount;
 extern unsigned long lastRpmReadTime_Task; 
-// FIX: Add state for status screen view
+
+// FIX: Correctly define all enum values for the information cycle
 enum StatusScreenView {
     INFO_IP,
     INFO_MQTT,
+    INFO_UPTIME,
     INFO_VERSION,
-    INFO_MENU_HINT
+    INFO_MENU_HINT,
+    // This must be the last item to correctly calculate the number of views
+    INFO_VIEW_COUNT 
 };
 extern volatile StatusScreenView currentStatusScreenView;
 
