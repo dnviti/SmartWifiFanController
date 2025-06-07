@@ -8,28 +8,28 @@
 #include <WebSocketsServer.h>
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
-#include <LiquidCrystal_I2C.h>
+#include <U8g2lib.h>
 #include <ArduinoJson.h> 
 #include <Preferences.h>
-#include <PubSubClient.h> // Added for MQTT
-#include <HTTPClient.h>   // For OTA from URL
-#include <HTTPUpdate.h>   // For OTA from URL
-#include <SPIFFS.h>       // For loading CA from SPIFFS
+#include <PubSubClient.h> 
+#include <HTTPClient.h>   
+#include <HTTPUpdate.h>   
+#include <SPIFFS.h>       
 
 // --- Firmware Version ---
-#define FIRMWARE_VERSION "0.1.2" // Define firmware version
-#define PIO_BUILD_ENV_NAME "esp32_fancontrol" // MUST MATCH 'PIO_ENV' in GitHub Actions release.yml
+#define FIRMWARE_VERSION "0.1.5" // Define firmware version
+#define PIO_BUILD_ENV_NAME "esp32_fancontrol" 
 
 // --- GitHub OTA Configuration ---
 #define GITHUB_REPO_OWNER "dnviti"
 #define GITHUB_REPO_NAME "SmartWifiFanController"
 #define GITHUB_API_LATEST_RELEASE_URL "https://api.github.com/repos/" GITHUB_REPO_OWNER "/" GITHUB_REPO_NAME "/releases/latest"
-#define GITHUB_ROOT_CA_FILENAME "/github_root_ca.pem" // Filename on SPIFFS for the Root CA
+#define GITHUB_ROOT_CA_FILENAME "/github_root_ca.pem" 
 
 // --- OTA Update Status ---
 extern volatile bool ota_in_progress;
 extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Extern declaration
+extern String GITHUB_API_ROOT_CA_STRING; 
 
 // --- Pin Definitions ---
 extern const int FAN_PWM_PIN;
@@ -60,8 +60,17 @@ extern volatile bool tempSensorFound;
 extern volatile int fanRpm;
 extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
-extern volatile unsigned long pulseCount; // For ISR
+extern volatile unsigned long pulseCount;
 extern unsigned long lastRpmReadTime_Task; 
+// FIX: Add state for status screen view
+enum StatusScreenView {
+    INFO_IP,
+    INFO_MQTT,
+    INFO_VERSION,
+    INFO_MENU_HINT
+};
+extern volatile StatusScreenView currentStatusScreenView;
+
 
 // --- Menu System Variables ---
 enum MenuScreen { 
@@ -102,6 +111,9 @@ extern int stagingNumCurvePoints;
 // --- Task Communication ---
 extern volatile bool needsImmediateBroadcast; 
 extern volatile bool rebootNeeded; 
+extern volatile bool displayUpdateNeeded; 
+extern volatile bool showMenuHint;
+extern unsigned long menuHintStartTime;
 
 // --- MQTT Configuration ---
 extern volatile bool isMqttEnabled;
@@ -120,13 +132,13 @@ extern char mqttDeviceName[64];
 // --- OTA Update Status ---
 extern volatile bool ota_in_progress;
 extern String ota_status_message; 
-extern String GITHUB_API_ROOT_CA_STRING; // Will hold the CA loaded from SPIFFS
+extern String GITHUB_API_ROOT_CA_STRING; 
 
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;
 extern Adafruit_BMP280 bmp;
-extern LiquidCrystal_I2C lcd;
+extern U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2;
 extern AsyncWebServer server;
 extern WebSocketsServer webSocket;
 extern WiFiClient espClient; 

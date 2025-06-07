@@ -4,22 +4,21 @@
 #include "input_handler.h"   
 #include "fan_control.h"     
 #include "display_handler.h" 
-#include "mqtt_handler.h"    // Added for MQTT
-#include <ElegantOTA.h>      // Added for OTA Updates
-#include <WiFi.h>            // Ensure WiFi is included for MAC address and hostname
+#include "mqtt_handler.h"    
+#include <ElegantOTA.h>      
+#include <WiFi.h>            
 
 // --- Network Task (Core 0) ---
 void networkTask(void *pvParameters) {
     if(serialDebugEnabled) Serial.println("[TASK] Network Task started on Core 0.");
     unsigned long lastPeriodicBroadcastTime = 0;
     unsigned long lastMqttStatusPublishTime = 0;
-    unsigned long lastMqttCurvePublishTime = 0; // ADDED: For periodic curve publish
+    unsigned long lastMqttCurvePublishTime = 0; 
 
     // --- WiFi Connection Handling ---
     if (isWiFiEnabled) {
-        // Generate and set hostname before WiFi.begin()
         uint8_t mac[6];
-        char hostname[32]; // "fancontrol-" is 11 chars, MAC is 12 chars, plus null terminator
+        char hostname[32]; 
         WiFi.macAddress(mac);
         sprintf(hostname, "fancontrol-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         
@@ -34,8 +33,7 @@ void networkTask(void *pvParameters) {
             WiFi.mode(WIFI_STA); 
             WiFi.begin(current_ssid, current_password);
             int wifiTimeout = 0;
-            // Wait for connection, but don't block indefinitely if WiFi settings are bad
-            while (WiFi.status() != WL_CONNECTED && wifiTimeout < 30) { // Approx 15 seconds timeout
+            while (WiFi.status() != WL_CONNECTED && wifiTimeout < 30) { 
                 vTaskDelay(pdMS_TO_TICKS(500)); 
                 if(serialDebugEnabled) Serial.print("."); 
                 wifiTimeout++;
@@ -48,33 +46,26 @@ void networkTask(void *pvParameters) {
     }
 
 
-    // --- Service Initialization (Websocket, MQTT, OTA) if WiFi is connected ---
+    // --- Service Initialization ---
     if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
         if(serialDebugEnabled) { 
             Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
             Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());
-            Serial.print("[WiFi] NetworkTask: Hostname: "); Serial.println(WiFi.getHostname()); // Log the effective hostname
+            Serial.print("[WiFi] NetworkTask: Hostname: "); Serial.println(WiFi.getHostname());
         }
         
-        // Setup WebSockets
         setupWebServerRoutes(); 
         webSocket.begin();
         webSocket.onEvent(webSocketEvent);
         
-        // Start AsyncWebServer
         server.begin(); 
         if(serialDebugEnabled) Serial.println("[SYSTEM] HTTP server and WebSocket started on Core 0.");
 
-        // Initialize ElegantOTA
         ElegantOTA.begin(&server);
-        // You can also set a custom ID for ElegantOTA if desired, which could include the hostname
-        // ElegantOTA.setID(hostname); // Optional: If you want ElegantOTA to display this ID
         if(serialDebugEnabled) Serial.println("[SYSTEM] ElegantOTA started. Update endpoint: /update");
 
-
-        // Setup MQTT if enabled
         if (isMqttEnabled) {
-            setupMQTT(); // Initialize MQTT client, topics, server etc.
+            setupMQTT(); 
         } else {
             if(serialDebugEnabled) Serial.println("[MQTT] MQTT is disabled. Skipping MQTT setup in NetworkTask.");
         }
@@ -87,55 +78,45 @@ void networkTask(void *pvParameters) {
     for(;;) {
         if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) { 
             webSocket.loop();
-            ElegantOTA.loop(); // Handles OTA requests, important for some versions/modes
+            ElegantOTA.loop(); 
             unsigned long currentTime = millis();
 
-            // Combined broadcast/publish logic for immediate updates
             if (needsImmediateBroadcast) { 
-                broadcastWebSocketData(); // Send data to web clients
+                broadcastWebSocketData(); 
                 if (isMqttEnabled && mqttClient.connected()) {
                     publishStatusMQTT(); 
-                    if (fanCurveChanged) { // Only publish curve if it actually changed
+                    if (fanCurveChanged) { 
                         publishFanCurveMQTT();
-                        fanCurveChanged = false; // Reset flag
-                        lastMqttCurvePublishTime = currentTime; // Update time of last curve publish
+                        fanCurveChanged = false; 
+                        lastMqttCurvePublishTime = currentTime; 
                     }
                 }
                 needsImmediateBroadcast = false; 
-                lastPeriodicBroadcastTime = currentTime; // Reset periodic timer
-                if (isMqttEnabled) lastMqttStatusPublishTime = currentTime; // Reset MQTT periodic timer
+                lastPeriodicBroadcastTime = currentTime; 
+                if (isMqttEnabled) lastMqttStatusPublishTime = currentTime; 
             }
-            // Periodic WebSocket broadcast
             else if (currentTime - lastPeriodicBroadcastTime > 5000) {
                  broadcastWebSocketData();
                  lastPeriodicBroadcastTime = currentTime;
             }
 
-
-            // MQTT Loop and Periodic Publishing
             if (isMqttEnabled) {
-                loopMQTT(); // Handles connection, client.loop(), and reconnections
-                
-                // Periodic status publish if not covered by needsImmediateBroadcast
-                if (mqttClient.connected() && (currentTime - lastMqttStatusPublishTime > 30000)) { // e.g., every 30 seconds
+                loopMQTT(); 
+                if (mqttClient.connected() && (currentTime - lastMqttStatusPublishTime > 30000)) { 
                      publishStatusMQTT();
                      lastMqttStatusPublishTime = currentTime;
                 }
-                // ADDED: Periodic fan curve publish (less frequent)
-                if (mqttClient.connected() && (currentTime - lastMqttCurvePublishTime > 300000)) { // e.g., every 5 minutes
+                if (mqttClient.connected() && (currentTime - lastMqttCurvePublishTime > 300000)) { 
                      publishFanCurveMQTT();
                      lastMqttCurvePublishTime = currentTime;
                 }
             }
         } else if (isWiFiEnabled && WiFi.status() != WL_CONNECTED) {
-            // Optional: Attempt to reconnect WiFi if it drops
-            // For now, MQTT will also disconnect if WiFi drops (handled in loopMQTT).
-            // ElegantOTA also requires WiFi.
-            if (serialDebugEnabled && millis() % 15000 < 50) { // Log occasionally
+            if (serialDebugEnabled && millis() % 15000 < 50) { 
                  Serial.println("[WiFi] NetworkTask: WiFi disconnected. Waiting for reconnection or config change. OTA/Web/MQTT unavailable.");
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -144,43 +125,45 @@ void mainAppTask(void *pvParameters) {
     if(serialDebugEnabled) Serial.println("[TASK] Main Application Task started on Core 1.");
     unsigned long lastTempReadTime = 0;
     unsigned long lastRpmCalculationTime = 0;
-    unsigned long lastLcdUpdateTime = 0;
-    lastRpmReadTime_Task = millis(); // Initialize for RPM calculation
-
-    if (isInMenuMode) displayMenu(); else updateLCD_NormalMode();
+    lastRpmReadTime_Task = millis(); 
 
     for(;;) {
         unsigned long currentTime = millis();
+
+        // FIX: Handle the timeout for the menu hint screen
+        if (showMenuHint && (currentTime - menuHintStartTime > 3000)) {
+            showMenuHint = false;
+            displayUpdateNeeded = true; // Request a redraw to show the status screen again
+        }
 
         if(serialDebugEnabled) { 
             handleSerialCommands(); 
         }
         handleMenuInput();      
 
-        if (!isInMenuMode) { // Only perform these actions if not in menu
-            // Read Temperature
+        if (!isInMenuMode && !showMenuHint) { // Only run main logic if not in menu and not showing hint
             if (tempSensorFound) {
-                if (currentTime - lastTempReadTime > 2000) { // Read every 2 seconds
+                if (currentTime - lastTempReadTime > 2000) { 
                     lastTempReadTime = currentTime;
                     float newTemp = bmp.readTemperature();
                     if (!isnan(newTemp)) { 
-                        if (abs(newTemp - currentTemperature) > 0.05 || currentTemperature <= -990.0) { // Update if changed significantly or first read
+                        if (abs(newTemp - currentTemperature) > 0.05 || currentTemperature <= -990.0) {
                            currentTemperature = newTemp;
-                           needsImmediateBroadcast = true; // Temperature changed, signal update
+                           needsImmediateBroadcast = true;
+                           displayUpdateNeeded = true;
                         }
                     } else {
                         if(serialDebugEnabled) Serial.println("[SENSOR_ERR] Failed to read from BMP280 sensor!");
-                        if (currentTemperature > -990.0) needsImmediateBroadcast = true; // Was valid, now not
+                        if (currentTemperature > -990.0) { needsImmediateBroadcast = true; displayUpdateNeeded = true; }
                         currentTemperature = -999.0; 
                     }
                 }
-            } else { // Sensor not found
-                if (currentTemperature > -990.0) needsImmediateBroadcast = true; // Was valid, now not
+            } else { 
+                if (currentTemperature > -990.0) { needsImmediateBroadcast = true; displayUpdateNeeded = true; }
                 currentTemperature = -999.0; 
             }
 
-            // Calculate RPM
-            if (currentTime - lastRpmCalculationTime > 1000) { // Calculate every 1 second
+            if (currentTime - lastRpmCalculationTime > 1000) { 
                 lastRpmCalculationTime = currentTime;
                 noInterrupts(); 
                 unsigned long currentPulses = pulseCount;
@@ -196,39 +179,37 @@ void mainAppTask(void *pvParameters) {
                 }
                 if (newRpm != fanRpm) {
                     fanRpm = newRpm;
-                    needsImmediateBroadcast = true; // RPM changed
+                    needsImmediateBroadcast = true;
+                    displayUpdateNeeded = true;
                 }
             }
 
-            // Fan Control Logic
             int oldFanSpeedPercentage = fanSpeedPercentage; 
 
             if (isAutoMode) {
                 if (tempSensorFound) {
                     int autoPwmPerc = calculateAutoFanPWMPercentage(currentTemperature);
                     if (autoPwmPerc != fanSpeedPercentage) {
-                        setFanSpeed(autoPwmPerc); // setFanSpeed sets needsImmediateBroadcast
+                        setFanSpeed(autoPwmPerc); // setFanSpeed handles displayUpdateNeeded
                     }
-                } else { // Auto mode but no sensor
+                } else { 
                     if (AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE != fanSpeedPercentage) {
                         setFanSpeed(AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE);
                     }
                 }
-            } else { // Manual mode
+            } else { 
                 if (manualFanSpeedPercentage != fanSpeedPercentage) {
                     setFanSpeed(manualFanSpeedPercentage);
                 }
             }
-            
-            // Update LCD
-            // Update more frequently if something changed, or every second regardless
-            if (currentTime - lastLcdUpdateTime > 1000 || needsImmediateBroadcast) { 
-                updateLCD_NormalMode();
-                lastLcdUpdateTime = currentTime;
-            }
         } 
-        // If in menu mode, displayMenu() is called by handleMenuInput() when changes occur.
         
-        vTaskDelay(pdMS_TO_TICKS(50)); // Standard delay for cooperative multitasking
+        // Update display if a redraw has been requested
+        if (displayUpdateNeeded) {
+            updateDisplay();
+            displayUpdateNeeded = false; // Reset the flag
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }

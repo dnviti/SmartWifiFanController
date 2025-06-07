@@ -1,11 +1,10 @@
 #include "ota_updater.h"
-#include "config.h"        // For FIRMWARE_VERSION, GITHUB defines, ota_status_message etc.
-#include "display_handler.h" // For displayMenu()
+#include "config.h"        
+#include "display_handler.h"
 #include <WiFiClientSecure.h> 
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
-// SPIFFS is already included via config.h if needed here, but direct file ops are in main.cpp
 
 bool isVersionNewer(const String& currentVersionStr, const String& latestVersionStr) {
     String current = currentVersionStr;
@@ -21,30 +20,29 @@ GithubReleaseInfo getLatestGithubReleaseInfo() {
     
     ota_status_message = "Fetching release info...";
     needsImmediateBroadcast = true;
-    if(isInMenuMode) displayMenu();
+    displayUpdateNeeded = true;
 
 
     if (WiFi.status() != WL_CONNECTED) {
         ota_status_message = "Error: WiFi not connected.";
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-        if(isInMenuMode) displayMenu();
         return info;
     }
 
     HTTPClient http;
     WiFiClientSecure clientSecure; 
 
-    // Use the GITHUB_API_ROOT_CA_STRING loaded from SPIFFS
     if (GITHUB_API_ROOT_CA_STRING.isEmpty()) { 
         ota_status_message = "Error: No Root CA loaded for secure OTA.";
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA_ERR] " + ota_status_message + " Check " + GITHUB_ROOT_CA_FILENAME + " on SPIFFS.");
-        if(isInMenuMode) displayMenu();
         return info;
     }
     
-    clientSecure.setCACert(GITHUB_API_ROOT_CA_STRING.c_str()); // Use the loaded CA string
+    clientSecure.setCACert(GITHUB_API_ROOT_CA_STRING.c_str());
     if(serialDebugEnabled) Serial.println("[OTA] Attempting secure connection to GitHub API using CA from SPIFFS...");
 
     if (http.begin(clientSecure, GITHUB_API_LATEST_RELEASE_URL)) {
@@ -101,7 +99,7 @@ GithubReleaseInfo getLatestGithubReleaseInfo() {
     }
     
     needsImmediateBroadcast = true;
-    if(isInMenuMode) displayMenu();
+    displayUpdateNeeded = true;
     return info;
 }
 
@@ -110,19 +108,18 @@ void performOTAUpdateProcess(const String& latestVersionTag, const String& firmw
     ota_in_progress = true;
     ota_status_message = "Starting update to " + latestVersionTag + "...";
     needsImmediateBroadcast = true;
+    displayUpdateNeeded = true;
     if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-    if(isInMenuMode) displayMenu(); 
 
     vTaskDelay(pdMS_TO_TICKS(200)); 
 
     t_httpUpdate_return ret;
 
-    // Use the GITHUB_API_ROOT_CA_STRING loaded from SPIFFS
     if (GITHUB_API_ROOT_CA_STRING.isEmpty()) { 
         ota_status_message = "Error: No Root CA loaded for secure OTA.";
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA_ERR] " + ota_status_message + " Firmware/SPIFFS update aborted.");
-        if(isInMenuMode) displayMenu();
         ota_in_progress = false;
         return;
     }
@@ -131,12 +128,12 @@ void performOTAUpdateProcess(const String& latestVersionTag, const String& firmw
     if (!firmwareURL.isEmpty()) {
         ota_status_message = "Updating FW: " + latestVersionTag;
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-        if(isInMenuMode) displayMenu();
         vTaskDelay(pdMS_TO_TICKS(100));
 
         WiFiClientSecure fwClient; 
-        fwClient.setCACert(GITHUB_API_ROOT_CA_STRING.c_str()); // Use loaded CA string
+        fwClient.setCACert(GITHUB_API_ROOT_CA_STRING.c_str());
         if(serialDebugEnabled) Serial.println("[OTA_FW] Attempting secure FW update...");
         
         httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); 
@@ -155,7 +152,7 @@ void performOTAUpdateProcess(const String& latestVersionTag, const String& firmw
                 ota_status_message = "FW update OK! Rebooting...";
                 if(serialDebugEnabled) Serial.println("[OTA_FW] Firmware update OK.");
                 needsImmediateBroadcast = true;
-                if(isInMenuMode) displayMenu();
+                displayUpdateNeeded = true;
                 delay(1000); 
                 ESP.restart(); 
                 return; 
@@ -165,18 +162,18 @@ void performOTAUpdateProcess(const String& latestVersionTag, const String& firmw
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
     }
     needsImmediateBroadcast = true;
-    if(isInMenuMode) displayMenu();
+    displayUpdateNeeded = true;
 
     // --- SPIFFS Update ---
     if (!spiffsURL.isEmpty()) {
         ota_status_message = "Updating FS: " + latestVersionTag;
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-        if(isInMenuMode) displayMenu();
         vTaskDelay(pdMS_TO_TICKS(100));
 
         WiFiClientSecure fsClient; 
-        fsClient.setCACert(GITHUB_API_ROOT_CA_STRING.c_str()); // Use loaded CA string
+        fsClient.setCACert(GITHUB_API_ROOT_CA_STRING.c_str());
         if(serialDebugEnabled) Serial.println("[OTA_FS] Attempting secure FS update...");
 
         httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
@@ -195,7 +192,7 @@ void performOTAUpdateProcess(const String& latestVersionTag, const String& firmw
                 ota_status_message = "FS update OK! Rebooting...";
                 if(serialDebugEnabled) Serial.println("[OTA_FS] SPIFFS update OK.");
                 needsImmediateBroadcast = true;
-                if(isInMenuMode) displayMenu();
+                displayUpdateNeeded = true;
                 delay(1000);
                 ESP.restart();
                 return; 
@@ -207,7 +204,7 @@ void performOTAUpdateProcess(const String& latestVersionTag, const String& firmw
 
     ota_in_progress = false; 
     needsImmediateBroadcast = true;
-    if(isInMenuMode) displayMenu();
+    displayUpdateNeeded = true;
 }
 
 
@@ -215,43 +212,44 @@ void triggerOTAUpdateCheck() {
     if (ota_in_progress) {
         ota_status_message = "OTA update already in progress.";
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-        if(isInMenuMode) displayMenu();
         return;
     }
 
     ota_in_progress = true; 
     ota_status_message = "Checking for updates...";
     needsImmediateBroadcast = true;
+    displayUpdateNeeded = true;
     if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-    if(isInMenuMode) displayMenu(); 
 
     GithubReleaseInfo releaseInfo = getLatestGithubReleaseInfo();
 
     if (!releaseInfo.isValid) {
         ota_in_progress = false; 
         needsImmediateBroadcast = true;
-        if(isInMenuMode) displayMenu();
+        displayUpdateNeeded = true;
         return;
     }
 
     if (isVersionNewer(FIRMWARE_VERSION, releaseInfo.tagName)) {
         ota_status_message = "New: " + releaseInfo.tagName + " Curr: " FIRMWARE_VERSION;
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
-        if(isInMenuMode) displayMenu();
         
         ota_status_message = "Preparing to update...";
         needsImmediateBroadcast = true;
-        if(isInMenuMode) displayMenu();
+        displayUpdateNeeded = true;
         vTaskDelay(pdMS_TO_TICKS(2000)); 
 
         performOTAUpdateProcess(releaseInfo.tagName, releaseInfo.firmwareAssetURL, releaseInfo.spiffsAssetURL);
     } else {
         ota_status_message = "Firmware is up to date (" FIRMWARE_VERSION ").";
         needsImmediateBroadcast = true;
+        displayUpdateNeeded = true;
         if(serialDebugEnabled) Serial.println("[OTA] " + ota_status_message);
         ota_in_progress = false; 
     }
-    if(isInMenuMode) displayMenu(); 
+    displayUpdateNeeded = true;
 }

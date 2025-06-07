@@ -1,326 +1,171 @@
 #include "display_handler.h"
-#include "config.h" // For global variables and lcd object
+#include "config.h" // For global variables and u8g2 object
 
-void updateLCD_NormalMode() { 
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    String line0 = "";
-    line0 += (isAutoMode ? "AUTO" : "MANUAL");
-    
-    if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
-        String ipStr = WiFi.localIP().toString();
-        if (line0.length() + ipStr.length() + 1 <= 16) { 
-             line0 += " " + ipStr;
-        } else if (line0.length() + 8 <= 16) { 
-             line0 += " WiFi ON";
-        } else {
-            if (line0.length() > 8) line0 = line0.substring(0,7) + ".";
-            line0 += " WiFi ON";
-        }
-    } else if (isWiFiEnabled) {
-        if (line0.length() + 8 <= 16) line0 += " WiFi..."; 
-        else { if (line0.length() > 7) line0 = line0.substring(0,6) + "."; line0 += " WiFi...";}
-    } else { 
-        if (line0.length() + 9 <= 16) line0 += " WiFi OFF";
-        else { if (line0.length() > 6) line0 = line0.substring(0,5) + "."; line0 += " WiFi OFF";}
-    }
+// Helper function to draw the main status screen on the OLED
+void drawStatusScreen() {
+    u8g2.setFont(u8g2_font_profont12_tr);
 
-    if (isMqttEnabled && WiFi.status() == WL_CONNECTED) {
-        if (line0.length() + 2 <= 16) { 
-            line0 += (mqttClient.connected() ? " M" : " m"); 
-            if (isMqttDiscoveryEnabled && line0.length() + 1 <= 16){ 
-                 line0 += "D";
-            }
-        }
-    }
-    lcd.print(line0.substring(0,16)); 
-    
-    lcd.setCursor(0, 1);
-    String line1 = "T:";
-    if (!tempSensorFound || currentTemperature <= -990.0) { 
-        line1 += "N/A "; 
+    // Line 1: Mode and Temperature
+    String line1 = isAutoMode ? "AUTO" : "MAN";
+    u8g2.drawStr(0, 11, line1.c_str());
+
+    String tempStr;
+    if (tempSensorFound && currentTemperature > -990.0) {
+        tempStr = String(currentTemperature, 0) + "C";
     } else {
-        line1 += String(currentTemperature, 1); 
+        tempStr = "N/A";
     }
-    
-    line1 += " F:"; 
-    if(fanSpeedPercentage < 10) line1 += " ";   
-    if(fanSpeedPercentage < 100) line1 += " ";  
-    line1 += String(fanSpeedPercentage);
-    line1 += "%"; 
+    u8g2.drawStr(128 - u8g2.getStrWidth(tempStr.c_str()), 11, tempStr.c_str());
 
-    String rpmStr;
-    if (fanRpm > 0) {
-        if (fanRpm >= 1000) {
-            rpmStr = String(fanRpm / 1000.0, 1) + "K"; 
+    // Line 2: Fan Speed and RPM
+    String fanStr = String(fanSpeedPercentage) + "%";
+    u8g2.drawStr(0, 22, fanStr.c_str());
+
+    String rpmStr = String(fanRpm) + "rpm";
+    u8g2.drawStr(128 - u8g2.getStrWidth(rpmStr.c_str()), 22, rpmStr.c_str());
+    
+    // Line 3: WiFi and MQTT Status indicators
+    u8g2.setFont(u8g2_font_6x10_tr); // Use a text font
+    if (isWiFiEnabled) {
+        if (WiFi.status() == WL_CONNECTED) {
+            u8g2.drawStr(0, 31, WiFi.localIP().toString().c_str());
+
+            if(isMqttEnabled) {
+                int mqtt_icon_x = u8g2.getStrWidth(WiFi.localIP().toString().c_str()) + 4;
+                if (mqtt_icon_x < 118) {
+                    u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
+                    u8g2.drawGlyph(mqtt_icon_x, 32, (mqttClient.connected() ? 81 : 82)); 
+                }
+            }
         } else {
-            rpmStr = String(fanRpm); 
+            u8g2.drawStr(0, 31, "WiFi Connecting...");
         }
-        if (line1.length() + 1 + rpmStr.length() <= 16) { 
-             line1 += "R"; 
-             line1 += rpmStr;
-        }
+    } else {
+        u8g2.drawStr(0, 31, "WiFi OFF");
     }
-    lcd.print(line1.substring(0,16)); 
+
+    // FIX: Draw the menu hint icon on the status screen itself if requested
+    if (showMenuHint) {
+        u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
+        u8g2.drawGlyph(120, 32, 155); // Menu icon
+    } else if (rebootNeeded) { // Only show reboot if hint isn't showing
+        u8g2.setFont(u8g2_font_open_iconic_all_1x_t);
+        u8g2.drawGlyph(120, 32, 178); // Reload icon
+    }
 }
 
-void displayMenu() {
-    lcd.clear();
+
+// Helper function to draw menu screens on the OLED
+void drawMenuScreen() {
+    u8g2.setFont(u8g2_font_6x12_tr); 
+
+    const int max_items_on_screen = 2;
+    const int item_height = 10;
+    
+    auto draw_menu_items = [&](const char* title, const char* items[], int count) {
+        u8g2.drawStr(0, item_height - 2, title);
+        u8g2.drawHLine(0, item_height, 128);
+
+        int start_item = 0;
+        if (selectedMenuItem >= max_items_on_screen) {
+            start_item = selectedMenuItem - (max_items_on_screen - 1);
+        }
+
+        for (int i = 0; i < max_items_on_screen; i++) {
+            int current_item_index = start_item + i;
+            if (current_item_index >= count) break;
+
+            int y_pos = (i * item_height) + (item_height * 2);
+            
+            String item_text = items[current_item_index];
+
+            if (current_item_index == selectedMenuItem) {
+                u8g2.drawBox(0, y_pos - item_height + 2, 128, item_height);
+                u8g2.setDrawColor(0); 
+                u8g2.drawStr(2, y_pos, item_text.c_str());
+                u8g2.setDrawColor(1); 
+            } else {
+                u8g2.drawStr(2, y_pos, item_text.c_str());
+            }
+        }
+    };
+    
+    // --- Specific Menu Screen Logic ---
     switch (currentMenuScreen) {
-        case MAIN_MENU:             displayMainMenu(); break;
-        case WIFI_SETTINGS:         displayWiFiSettingsMenu(); break;
-        case WIFI_SCAN:             displayWiFiScanMenu(); break;
-        case WIFI_PASSWORD_ENTRY:   displayPasswordEntryMenu(); break; 
-        case WIFI_STATUS:           displayWiFiStatusMenu(); break; 
-        case MQTT_SETTINGS:         displayMqttSettingsMenu(); break;
-        case MQTT_SERVER_ENTRY:     displayMqttEntryMenu("MQTT Server:", mqttServer, false, false, sizeof(mqttServer)-1); break;
-        case MQTT_PORT_ENTRY:       displayMqttEntryMenu("MQTT Port:", String(mqttPort).c_str(), false, true, 5); break;
-        case MQTT_USER_ENTRY:       displayMqttEntryMenu("MQTT User:", mqttUser, false, false, sizeof(mqttUser)-1); break;
-        case MQTT_PASS_ENTRY:       displayMqttEntryMenu("MQTT Pass:", mqttPassword, true, false, sizeof(mqttPassword)-1); break;
-        case MQTT_TOPIC_ENTRY:      displayMqttEntryMenu("MQTT Topic:", mqttBaseTopic, false, false, sizeof(mqttBaseTopic)-1); break;
-        case MQTT_DISCOVERY_SETTINGS: displayMqttDiscoverySettingsMenu(); break; 
-        case MQTT_DISCOVERY_PREFIX_ENTRY: displayMqttEntryMenu("Discovery Pfx:", mqttDiscoveryPrefix, false, false, sizeof(mqttDiscoveryPrefix)-1); break; 
-        case OTA_UPDATE_SCREEN:     displayOtaUpdateMenu(); break; // NEW
-        case CONFIRM_REBOOT:        displayConfirmRebootMenu(); break;
-        default: 
-            lcd.print("Unknown Menu"); 
+        case MAIN_MENU: {
+            const char* items[] = {"WiFi Settings", "MQTT Settings", "OTA Update", "Exit Menu"};
+            draw_menu_items("Main Menu", items, 4);
             break;
-    }
-}
-
-void displayMainMenu() {
-    // Adjusted for 3 items: WiFi, MQTT, OTA Update, View Status (Exit)
-    const char* items[] = {"WiFi Settings", "MQTT Settings", "OTA Update", "View Status"};
-    const int numItems = 4;
-
-    if (selectedMenuItem < 2) { // Display first two items
-        lcd.setCursor(0,0); lcd.print((selectedMenuItem == 0 ? ">" : " ") + String(items[0]));
-        lcd.setCursor(0,1); lcd.print((selectedMenuItem == 1 ? ">" : " ") + String(items[1]));
-    } else { // Display items 2 and 3 (OTA and View Status)
-        lcd.setCursor(0,0); lcd.print((selectedMenuItem == 2 ? ">" : " ") + String(items[2]));
-        lcd.setCursor(0,1); lcd.print((selectedMenuItem == 3 ? ">" : " ") + String(items[3]));
-    }
-}
-
-void displayWiFiSettingsMenu() {
-    const char* items[] = {"WiFi:", "Scan Networks", "SSID:", "Password Set", "Connect WiFi", "DisconnectWiFi", "Back to Main"};
-    const int numItems = 7; 
-
-    for (int i = 0; i < 2; ++i) { 
-        int itemIndexToDisplay;
-        if (i == 0) { 
-            itemIndexToDisplay = selectedMenuItem;
-            if (selectedMenuItem == numItems - 1 && numItems > 1) {
-                 itemIndexToDisplay = selectedMenuItem - 1;
+        }
+        case WIFI_SETTINGS: {
+            String wifi_status = String("WiFi: ") + (isWiFiEnabled ? "Enabled" : "Disabled");
+            String ssid_status = String("SSID: ") + String(current_ssid);
+            const char* items[] = {wifi_status.c_str(), "Scan Networks", ssid_status.c_str(), "Set Password", "Connect", "Disconnect", "Back"};
+            draw_menu_items("WiFi Settings", items, 7);
+            break;
+        }
+        case WIFI_SCAN: {
+            u8g2.drawStr(0, 10, "Scanning...");
+            if (scanResultCount > 0) {
+                 const char* item_pointers[scanResultCount];
+                 for(int i = 0; i < scanResultCount; i++) {
+                     item_pointers[i] = scannedSSIDs[i].c_str();
+                 }
+                draw_menu_items("Select WiFi", item_pointers, scanResultCount);
+            } else if (scanResultCount == 0) {
+                 u8g2.drawStr(0, 22, "No networks found");
             }
-        } else { 
-            itemIndexToDisplay = selectedMenuItem + 1;
-            if (selectedMenuItem == numItems - 1 && numItems > 0) {
-                 itemIndexToDisplay = selectedMenuItem;
-            }
-            if (selectedMenuItem == 0 && numItems > 1) {
-                itemIndexToDisplay = 1;
-            }
+            break;
         }
-        
-        if (numItems == 1 && i == 1) continue; 
-
-        if (itemIndexToDisplay < 0 || itemIndexToDisplay >= numItems) {
-            lcd.setCursor(0,i); lcd.print("                "); 
-            continue; 
+        case WIFI_PASSWORD_ENTRY: {
+             u8g2.drawStr(0, 10, "Enter Password:");
+            String passMask = "";
+            for(int i = 0; i < passwordCharIndex; ++i) passMask += "*";
+            passMask += currentPasswordEditChar;
+            if (passwordCharIndex >= sizeof(passwordInputBuffer) - 2) { passMask += " [OK?]"; }
+            u8g2.drawStr(0, 22, passMask.c_str());
+            break;
         }
-
-        lcd.setCursor(0, i);
-        String line = "";
-        if (itemIndexToDisplay == selectedMenuItem) line += ">"; else line += " ";
-
-        if (itemIndexToDisplay == 0) { 
-            line += items[itemIndexToDisplay]; line += " "; line += (isWiFiEnabled ? "Enabled" : "Disabled");
-        } else if (itemIndexToDisplay == 2) { 
-            line += items[itemIndexToDisplay]; line += " "; line += String(current_ssid).substring(0, 16 - line.length());
-        } else {
-            line += items[itemIndexToDisplay];
+        case OTA_UPDATE_SCREEN: {
+            u8g2.drawStr(0, 10, "Firmware Update");
+             if (ota_in_progress) {
+                 u8g2.drawStr(0, 22, "In Progress...");
+                 u8g2.drawStr(0, 32, ota_status_message.substring(0,21).c_str());
+             } else {
+                const char* items[] = {"Check & Update", "Back"};
+                draw_menu_items("OTA", items, 2);
+             }
+            break;
         }
-        lcd.print(line.substring(0,16));
+        case CONFIRM_REBOOT: {
+             u8g2.drawStr(0, 10, "Reboot Needed!");
+             const char* items[] = {"Reboot Now", "Cancel"};
+             draw_menu_items("Confirm", items, 2);
+             break;
+        }
+        case MQTT_SETTINGS: {
+            String mqtt_status = String("MQTT: ") + (isMqttEnabled ? "Enabled" : "Disabled");
+            const char* items[] = {mqtt_status.c_str(), "Server/Port", "User/Pass", "Base Topic", "Discovery Cfg", "Back"};
+            draw_menu_items("MQTT Settings", items, 6);
+            break;
+        }
+        default: {
+            u8g2.drawStr(0, 10, "Menu");
+            u8g2.drawStr(0, 22, "Not Implemented");
+            break;
+        }
     }
 }
 
-void displayWiFiScanMenu() {
-    lcd.setCursor(0,0);
-    if (scanResultCount == -1) { 
-        lcd.print("Scanning WiFi..");
-        lcd.setCursor(0,1); lcd.print("Please wait...");
-        return;
-    }
-    if (scanResultCount == 0) {
-        lcd.print("No Networks Found");
-        lcd.setCursor(0,1); lcd.print("Press BACK");
-        return;
-    }
-    lcd.print("Select Network:"); 
-    
-    lcd.setCursor(0,1);
-    if (selectedMenuItem >= 0 && selectedMenuItem < scanResultCount) {
-        lcd.print(">"); 
-        lcd.print(scannedSSIDs[selectedMenuItem].substring(0,15)); 
-    } else if (scanResultCount > 0) { 
-        lcd.print(">"); 
-        lcd.print(scannedSSIDs[0].substring(0,15)); 
+
+void updateDisplay() {
+  u8g2.firstPage();
+  do {
+    // FIX: The hint is now part of the status screen, not a separate screen.
+    if (isInMenuMode) {
+      drawMenuScreen();
     } else {
-        lcd.print(" (No Networks)  "); 
+      drawStatusScreen();
     }
-}
-
-void displayPasswordEntryMenu() { 
-    lcd.setCursor(0,0); lcd.print("WiFi Password:");
-    String passMask = "";
-    for(int k=0; k < passwordCharIndex; ++k) passMask += "*"; 
-    passMask += currentPasswordEditChar; 
-    
-    if (passwordCharIndex >= sizeof(passwordInputBuffer) - 2) { 
-        passMask += " [OK?]";
-    }
-
-    lcd.setCursor(0,1); lcd.print(passMask.substring(0,16));
-}
-
-void displayWiFiStatusMenu(){ 
-    lcd.setCursor(0,0); lcd.print("WiFi: "); lcd.print(isWiFiEnabled ? "ON" : "OFF");
-    lcd.setCursor(0,1);
-    if(isWiFiEnabled && WiFi.status() == WL_CONNECTED){
-        lcd.print(WiFi.localIP());
-    } else if (isWiFiEnabled) {
-        lcd.print("Connecting...");
-    } else {
-        lcd.print("Disabled.");
-    }
-}
-
-void displayConfirmRebootMenu() {
-    lcd.setCursor(0,0); lcd.print("Reboot needed!");
-    String line1 = (selectedMenuItem == 0 ? ">Yes " : " Yes ");
-    line1 += (selectedMenuItem == 1 ? ">No" : " No");
-    lcd.setCursor(0,1); lcd.print(line1);
-}
-
-void displayMqttSettingsMenu() {
-    const char* items[] = {"MQTT:", "Server:", "Port:", "User:", "Password:", "Base Topic:", "Discovery Cfg", "Back to Main"};
-    const int numItems = 8; 
-
-    for (int i = 0; i < 2; ++i) { 
-        int itemIndexToDisplay;
-        if (i == 0) { 
-            itemIndexToDisplay = selectedMenuItem;
-            if (selectedMenuItem == numItems - 1 && numItems > 1) itemIndexToDisplay = selectedMenuItem - 1; 
-        } else { 
-            itemIndexToDisplay = selectedMenuItem + 1;
-            if (selectedMenuItem == numItems - 1 && numItems > 0) itemIndexToDisplay = selectedMenuItem; 
-            if (selectedMenuItem == 0 && numItems > 1) itemIndexToDisplay = selectedMenuItem +1; 
-        }
-        
-        if (numItems == 1 && i == 1) continue;
-
-        if (itemIndexToDisplay < 0 || itemIndexToDisplay >= numItems) {
-            lcd.setCursor(0,i); lcd.print("                ");
-            continue; 
-        }
-
-        lcd.setCursor(0, i);
-        String line = "";
-        if (itemIndexToDisplay == selectedMenuItem) line += ">"; else line += " ";
-
-        if (itemIndexToDisplay == 0) { 
-            line += items[itemIndexToDisplay]; line += " "; line += (isMqttEnabled ? "Enabled" : "Disabled");
-        } else if (itemIndexToDisplay == 1) { 
-            line += items[itemIndexToDisplay]; line += " "; line += String(mqttServer).substring(0, 16 - line.length());
-        } else if (itemIndexToDisplay == 2) { 
-            line += items[itemIndexToDisplay]; line += " "; line += String(mqttPort);
-        } else if (itemIndexToDisplay == 3) { 
-            line += items[itemIndexToDisplay]; line += " "; line += String(mqttUser).substring(0, 16 - line.length());
-        } else if (itemIndexToDisplay == 4) { 
-            line += items[itemIndexToDisplay]; line += " "; 
-            for(int k=0; k < strlen(mqttPassword) && line.length() < 15; ++k) line += "*";
-        } else if (itemIndexToDisplay == 5) { 
-            line += items[itemIndexToDisplay]; line += " "; line += String(mqttBaseTopic).substring(0, 16 - line.length());
-        }
-         else { 
-            line += items[itemIndexToDisplay]; 
-        }
-        lcd.print(line.substring(0,16));
-    }
-}
-
-void displayMqttEntryMenu(const char* prompt, const char* currentValue, bool isPassword, bool isNumericOnly, int maxLength) {
-    lcd.setCursor(0,0); lcd.print(String(prompt).substring(0,16));
-    
-    String valueToShow = "";
-    if (isPassword) {
-        for(int k=0; k < generalInputCharIndex; ++k) valueToShow += "*"; 
-    } else {
-        for(int k=0; k<generalInputCharIndex; ++k) valueToShow += generalInputBuffer[k];
-    }
-    valueToShow += currentGeneralEditChar; 
-    
-    if (generalInputCharIndex >= maxLength -1 ) { 
-        valueToShow += " [OK?]";
-    }
-
-    lcd.setCursor(0,1); lcd.print(valueToShow.substring(0,16));
-}
-
-void displayMqttDiscoverySettingsMenu() {
-    const char* items[] = {"Discovery:", "Prefix:", "Back"};
-    const int numItems = 3;
-
-    for (int i = 0; i < 2; ++i) { 
-        int itemIndexToDisplay;
-        if (i == 0) { 
-            itemIndexToDisplay = selectedMenuItem;
-            if (selectedMenuItem == numItems - 1 && numItems > 1) itemIndexToDisplay = selectedMenuItem - 1; 
-        } else { 
-            itemIndexToDisplay = selectedMenuItem + 1;
-            if (selectedMenuItem == numItems - 1 && numItems > 0) itemIndexToDisplay = selectedMenuItem; 
-            if (selectedMenuItem == 0 && numItems > 1) itemIndexToDisplay = selectedMenuItem +1; 
-        }
-        
-        if (numItems == 1 && i == 1) continue;
-
-        if (itemIndexToDisplay < 0 || itemIndexToDisplay >= numItems) {
-            lcd.setCursor(0,i); lcd.print("                ");
-            continue; 
-        }
-
-        lcd.setCursor(0, i);
-        String line = "";
-        if (itemIndexToDisplay == selectedMenuItem) line += ">"; else line += " ";
-
-        if (itemIndexToDisplay == 0) { 
-            line += items[itemIndexToDisplay]; line += " "; line += (isMqttDiscoveryEnabled ? "Enabled" : "Disabled");
-        } else if (itemIndexToDisplay == 1) { 
-            line += items[itemIndexToDisplay]; line += " "; line += String(mqttDiscoveryPrefix).substring(0, 16 - line.length());
-        } else { 
-            line += items[itemIndexToDisplay];
-        }
-        lcd.print(line.substring(0,16));
-    }
-}
-
-// New function to display OTA Update screen
-void displayOtaUpdateMenu() {
-    lcd.setCursor(0, 0);
-    if (ota_in_progress) {
-        lcd.print("OTA In Progress:");
-        lcd.setCursor(0, 1);
-        lcd.print(ota_status_message.substring(0, 16));
-    } else {
-        lcd.print("Firmware Update");
-        lcd.setCursor(0, 1);
-        if (selectedMenuItem == 0) {
-            lcd.print(">Check & Update");
-        } else if (selectedMenuItem == 1) {
-            lcd.print(">Back to Main");
-        } else { // Default or when status is shown
-             lcd.print(ota_status_message.substring(0,16));
-        }
-    }
+  } while (u8g2.nextPage());
 }
