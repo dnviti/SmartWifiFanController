@@ -152,7 +152,7 @@ void mainAppTask(void *pvParameters) {
 
             // Always try to read from physical sensor if it exists
             if (tempSensorFound) {
-                if (currentTime - lastTempReadTime > 2000) { 
+                if (currentTime - lastTempReadTime >= 2000) { 
                     lastTempReadTime = currentTime;
                     float newTemp = bmp.readTemperature();
                     if (!isnan(newTemp)) { 
@@ -175,10 +175,11 @@ void mainAppTask(void *pvParameters) {
             // RPM calculation logic
             if (currentTime - lastRpmCalculationTime > 1000) { 
                 lastRpmCalculationTime = currentTime;
-                noInterrupts(); 
+                
+                noInterrupts();
                 unsigned long currentPulses = pulseCount;
                 pulseCount = 0; 
-                interrupts(); 
+                interrupts();
                 
                 unsigned long elapsedMillis = currentTime - lastRpmReadTime_Task;
                 lastRpmReadTime_Task = currentTime; 
@@ -187,6 +188,7 @@ void mainAppTask(void *pvParameters) {
                 if (elapsedMillis > 0 && PULSES_PER_REVOLUTION > 0) {
                     newRpm = (currentPulses / (float)PULSES_PER_REVOLUTION) * (60000.0f / elapsedMillis);
                 }
+
                 if (newRpm != fanRpm) {
                     fanRpm = newRpm;
                     needsImmediateBroadcast = true;
@@ -225,7 +227,6 @@ void mainAppTask(void *pvParameters) {
             }
         } 
         
-        // FIX: Implement hybrid display update logic.
         // This will update the display immediately when an action requires it,
         // OR it will update periodically every 500ms to refresh live data.
         if (displayUpdateNeeded || (currentTime - lastDisplayUpdateTime > 500)) {

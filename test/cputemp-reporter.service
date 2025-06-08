@@ -1,0 +1,30 @@
+[Unit]
+Description=CPU Temperature Reporter for SmartWifiFanController
+After=network.target
+
+[Service]
+# --- IMPORTANT: EDIT THE VALUES BELOW ---
+# Replace 'your_user' with the actual username that will run the script.
+# It's not recommended to run this as root.
+User=bazzite
+
+# Replace '/path/to/your_project/SmartWifiFanController/test' with the absolute path
+# to the directory containing the pc_client_test.py script.
+WorkingDirectory=/home/bazzite/.local/bin
+
+# Replace '/path/to/your_project/venv/bin/python' with the absolute path to the 
+# Python interpreter within your project's virtual environment (if you use one).
+# If you installed psutil and requests system-wide, you can just use '/usr/bin/python3'.
+ExecStart=/usr/bin/python pc_client_test.py
+
+# --- Optional: Uncomment the line below to set the ESP32 IP address via this file ---
+# This is useful if you want to manage the IP address centrally.
+# The Python script will need to be modified to read this environment variable.
+Environment="ESP32_IP_ADDRESS=192.168.128.165"
+
+# --- Service Behavior ---
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

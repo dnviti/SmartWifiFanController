@@ -19,7 +19,7 @@ const int BTN_SELECT_PIN = 25;
 const int BTN_BACK_PIN = 5;     
 const int DEBUG_ENABLE_PIN = 4; 
 const int LED_DEBUG_PIN = 2;    
-const int FAN_TACH_PIN_ACTUAL = 15; 
+const int FAN_TACH_PIN_ACTUAL = 15; // Reverted to original pin
 
 // Fan Control Constants
 const int PWM_CHANNEL = 0;
@@ -40,7 +40,7 @@ volatile int fanRpm = 0;
 volatile int fanSpeedPercentage = 0;
 volatile int fanSpeedPWM_Raw = 0;
 volatile unsigned long pulseCount = 0;
-unsigned long lastRpmReadTime_Task = 0; 
+unsigned long lastRpmReadTime_Task = 0; // Re-added for original logic
 volatile StatusScreenView currentStatusScreenView = INFO_IP;
 
 // PC-based Temperature Reporting
@@ -122,6 +122,8 @@ char current_password[64] = "YOUR_WIFI_PASSWORD";
 
 TaskHandle_t networkTaskHandle = NULL; 
 TaskHandle_t mainAppTaskHandle = NULL;
+
+// portMUX_TYPE rpmMux = portMUX_INITIALIZER_UNLOCKED; // Removed
 
 
 // Function to load Root CA from SPIFFS

@@ -17,7 +17,7 @@
 #include <SPIFFS.h>       
 
 // --- Firmware Version ---
-#define FIRMWARE_VERSION "0.2.1" // Added REST API and PC Temp reporting
+#define FIRMWARE_VERSION "0.2.7" // FIX: Prioritize CPU temperature on OLED display
 #define PIO_BUILD_ENV_NAME "esp32_fancontrol" 
 
 // --- GitHub OTA Configuration ---
@@ -65,7 +65,7 @@ extern volatile int fanRpm;
 extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
 extern volatile unsigned long pulseCount;
-extern unsigned long lastRpmReadTime_Task; 
+extern unsigned long lastRpmReadTime_Task;
 
 // FIX: Correctly define all enum values for the information cycle
 enum StatusScreenView {

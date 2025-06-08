@@ -10,7 +10,10 @@ void drawStatusScreen() {
     u8g2.drawStr(0, 11, line1.c_str());
 
     String tempStr;
-    if (tempSensorFound && currentTemperature > -990.0) {
+    // FIX: Prioritize PC temperature on the display if available
+    if (pcTempDataReceived && pcTemperature > -990.0) {
+        tempStr = "PC " + String(pcTemperature, 0) + "C";
+    } else if (tempSensorFound && currentTemperature > -990.0) {
         tempStr = String(currentTemperature, 0) + "C";
     } else {
         tempStr = "N/A";

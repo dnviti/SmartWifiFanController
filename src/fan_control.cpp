@@ -12,7 +12,7 @@ void setDefaultFanCurve() {
 }
 
 int calculateAutoFanPWMPercentage(float temp) {
-    if (!tempSensorFound) { 
+    if (!tempSensorFound && !pcTempDataReceived) { 
         return AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE;
     }
     if (numCurvePoints == 0) return 0; 
@@ -37,7 +37,7 @@ void setFanSpeed(int percentage) {
     fanSpeedPWM_Raw = map(fanSpeedPercentage, 0, 100, 0, (1 << PWM_RESOLUTION_BITS) - 1);
     ledcWrite(PWM_CHANNEL, fanSpeedPWM_Raw);
     needsImmediateBroadcast = true; // Signal for web update
-    // LCD update is handled by mainAppTask or displayMenu
+    displayUpdateNeeded = true;
 }
 
 void IRAM_ATTR countPulse() {
