@@ -1,17 +1,28 @@
 let gateway = `ws://${window.location.hostname}:81/`;
 let websocket;
 const MAX_CURVE_POINTS_UI = 8;
+const MIN_CURVE_POINTS_UI = 2;
 let initialDataLoaded = false; 
+let fanCurveDataCache = []; // Cache for the fan curve data
+
+// --- Modal Elements ---
+let fanCurveModal;
+let closeModalButton;
+let openModalButton;
+
+// --- Chart.js instance ---
+let fanCurveChart = null;
 
 window.addEventListener('load', onLoad);
 
 function onLoad(event) { 
-  initWebSocket(); 
+  initWebSocket();
+  initModal();
+  
   const mqttEnableCheckbox = document.getElementById('mqttEnable');
   if (mqttEnableCheckbox) {
     mqttEnableCheckbox.addEventListener('change', toggleMqttFields);
   }
-  // No specific listener for discovery needed here if controlled with mqttFields
 }
 
 function initWebSocket() {
@@ -22,9 +33,47 @@ function initWebSocket() {
   websocket.onmessage = onMessage;
 }
 
+function initModal() {
+    fanCurveModal = document.getElementById('fanCurveModal');
+    closeModalButton = document.querySelector('#fanCurveModal .close-button');
+    openModalButton = document.getElementById('openCurveEditorBtn');
+
+    if (openModalButton) openModalButton.addEventListener('click', openCurveModal);
+    if (closeModalButton) closeModalButton.addEventListener('click', closeCurveModal);
+    
+    window.addEventListener('click', (event) => {
+        if (event.target == fanCurveModal) {
+            closeCurveModal();
+        }
+    });
+}
+
+function openCurveModal() {
+    if (fanCurveModal) {
+        createOrUpdateFanChart(fanCurveDataCache);
+        fanCurveModal.style.display = 'block';
+    }
+}
+
+function closeCurveModal() {
+    if (fanCurveModal) {
+        fanCurveModal.style.display = 'none';
+        if(fanCurveChart) {
+            const canvas = document.getElementById('fanCurveChart');
+            if (canvas) {
+                // Remove event listener to prevent memory leaks
+                canvas.removeEventListener('contextmenu', handleChartRightClick);
+            }
+            fanCurveChart.destroy();
+            fanCurveChart = null;
+        }
+    }
+}
+
 function onOpen(event) { 
     console.log('Connection opened'); 
 }
+
 function onClose(event) { 
     console.log('Connection closed'); 
     if (initialDataLoaded) {
@@ -43,75 +92,37 @@ function onMessage(event) {
   } catch (e) { console.error("Error parsing JSON:", e, event.data); return; }
 
   if (!initialDataLoaded) {
-      const loadingOverlay = document.getElementById('loadingOverlay');
-      const mainContentWrapper = document.querySelector('.main-content-wrapper');
-      if (loadingOverlay) loadingOverlay.style.display = 'none';
-      if (mainContentWrapper) mainContentWrapper.style.display = 'block';
+      document.getElementById('loadingOverlay').style.display = 'none';
+      document.querySelector('.main-content-wrapper').style.display = 'block';
       initialDataLoaded = true;
   }
 
+  // --- Update Main Page Data ---
   if (data.serialDebugEnabled !== undefined) { 
       document.getElementById('debugModeNotice').classList.toggle('hidden', !data.serialDebugEnabled);
   }
 
-  if (data.isWiFiEnabled === false) {
-      console.log("ESP32 reports WiFi is disabled. Web UI may not function fully.");
-      const mqttContainer = document.getElementById('mqttConfigContainer');
-      if (mqttContainer) mqttContainer.classList.add('hidden');
-      // Also hide OTA update section if WiFi is off
-      const otaContainer = document.querySelector('.ota-update-container');
-      if (otaContainer) otaContainer.classList.add('hidden');
-  } else {
-      const mqttContainer = document.getElementById('mqttConfigContainer');
-      if (mqttContainer) mqttContainer.classList.remove('hidden');
-      const otaContainer = document.querySelector('.ota-update-container');
-      if (otaContainer) otaContainer.classList.remove('hidden');
-  }
-
-
-  if (data.tempSensorFound !== undefined) {
-    const curveEditor = document.getElementById('curveEditorContainer');
-    const autoModeNotice = document.getElementById('autoModeNotice');
-    const tempDisplay = document.getElementById('temp');
-
-    if (data.tempSensorFound) {
-      tempDisplay.innerText = data.temperature !== undefined && data.temperature !== null && data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
-      if (curveEditor) curveEditor.classList.remove('hidden');
-      if (autoModeNotice) autoModeNotice.innerText = '';
-    } else {
-      tempDisplay.innerText = 'N/A';
-      if (curveEditor) curveEditor.classList.add('hidden');
-       if (data.isAutoMode && autoModeNotice) { 
-        autoModeNotice.innerText = '(Sensor N/A - Fixed Speed)';
-      } else if (autoModeNotice) {
-        autoModeNotice.innerText = '';
-      }
-    }
-  } else if (data.temperature !== undefined) { 
-     document.getElementById('temp').innerText = data.temperature !== null && data.temperature > -990 ? data.temperature.toFixed(1) : 'N/A';
+  document.getElementById('temp').innerText = (data.tempSensorFound && data.temperature > -990) ? data.temperature.toFixed(1) : 'N/A';
+  document.getElementById('pcTemp').innerText = (data.pcTempDataReceived && data.pcTemperature > -990) ? data.pcTemperature.toFixed(1) : 'N/A';
+  
+  const curveEditorContainer = document.querySelector('.curve-editor-container');
+  if(curveEditorContainer) {
+    curveEditorContainer.classList.toggle('hidden', !data.tempSensorFound && !data.pcTempDataReceived);
   }
 
   if (data.firmwareVersion !== undefined) { 
-    const fwVersionEl = document.getElementById('firmwareVersion');
-    if (fwVersionEl) fwVersionEl.innerText = data.firmwareVersion;
+    document.getElementById('firmwareVersion').innerText = data.firmwareVersion;
   }
 
   if(data.fanSpeed !== undefined) document.getElementById('fanSpeed').innerText = data.fanSpeed;
   if(data.fanRpm !== undefined) document.getElementById('rpm').innerText = data.fanRpm;
   
   if(data.isAutoMode !== undefined) {
-    const modeStr = data.isAutoMode ? "AUTO" : "MANUAL";
-    document.getElementById('mode').innerText = modeStr;
+    document.getElementById('mode').innerText = data.isAutoMode ? "AUTO" : "MANUAL";
     document.getElementById('manualControl').style.display = data.isAutoMode ? 'none' : 'block';
     const autoModeNotice = document.getElementById('autoModeNotice');
     if (autoModeNotice) { 
-        if (data.isAutoMode && data.tempSensorFound === false) {
-            autoModeNotice.innerText = '(Sensor N/A - Fixed Speed)';
-        } else if (data.isAutoMode && data.tempSensorFound === true) {
-             autoModeNotice.innerText = ''; 
-        } else if (!data.isAutoMode) {
-             autoModeNotice.innerText = ''; 
-        }
+        autoModeNotice.innerText = (data.isAutoMode && !data.tempSensorFound && !data.pcTempDataReceived) ? '(Sensor N/A - Fixed Speed)' : '';
     }
   }
   
@@ -120,18 +131,14 @@ function onMessage(event) {
     document.getElementById('manualSpeedValue').innerText = data.manualFanSpeed;
   }
 
-  if(data.fanCurve && Array.isArray(data.fanCurve) && data.tempSensorFound) { 
-    displayFanCurve(data.fanCurve); 
-  } else if (!data.tempSensorFound) {
-    const curvePointsContainer = document.getElementById('fanCurvePointsContainer');
-    if (curvePointsContainer) { 
-        curvePointsContainer.innerHTML = '<p class="placeholder">Fan curve editor disabled: Temperature sensor not detected.</p>';
-    }
+  if(data.fanCurve && Array.isArray(data.fanCurve)) { 
+    fanCurveDataCache = data.fanCurve;
   }
 
+  // --- MQTT & OTA updates ---
   if (data.isMqttEnabled !== undefined) {
     document.getElementById('mqttEnable').checked = data.isMqttEnabled;
-    toggleMqttFields(); 
+    toggleMqttFields();
   }
   if (data.mqttServer !== undefined) document.getElementById('mqttServer').value = data.mqttServer;
   if (data.mqttPort !== undefined) document.getElementById('mqttPort').value = data.mqttPort;
@@ -141,22 +148,16 @@ function onMessage(event) {
   if (data.isMqttDiscoveryEnabled !== undefined) {
     document.getElementById('mqttDiscoveryEnable').checked = data.isMqttDiscoveryEnabled;
   }
-  if (data.mqttDiscoveryPrefix !== undefined) {
-    document.getElementById('mqttDiscoveryPrefix').value = data.mqttDiscoveryPrefix;
-  }
+  if (data.mqttDiscoveryPrefix !== undefined) document.getElementById('mqttDiscoveryPrefix').value = data.mqttDiscoveryPrefix;
 
-  // Handle OTA Status Updates
   if (data.otaStatusMessage !== undefined) {
-    const otaStatusEl = document.getElementById('otaStatusMessage');
-    if (otaStatusEl) otaStatusEl.innerText = data.otaStatusMessage;
+    document.getElementById('otaStatusMessage').innerText = data.otaStatusMessage;
   }
   if (data.otaInProgress !== undefined) {
     const otaButton = document.getElementById('otaUpdateButton');
-    if (otaButton) otaButton.disabled = data.otaInProgress;
-    if (data.otaInProgress) {
-        if (otaButton) otaButton.innerText = "Update in Progress...";
-    } else {
-        if (otaButton) otaButton.innerText = "Check for Updates & Install";
+    if (otaButton) {
+        otaButton.disabled = data.otaInProgress;
+        otaButton.innerText = data.otaInProgress ? "Update in Progress..." : "Check for Updates & Install";
     }
   }
 }
@@ -164,99 +165,182 @@ function onMessage(event) {
 function sendCommand(commandPayload) {
   if (websocket && websocket.readyState === WebSocket.OPEN) {
     websocket.send(JSON.stringify(commandPayload));
-  } else { console.log("WebSocket not open or WiFi disabled on ESP32."); }
+  } else { console.log("WebSocket not open."); }
 }
+
 function updateSliderValueDisplay(value) { document.getElementById('manualSpeedValue').innerText = value; }
 function setManualSpeed(value) {
   updateSliderValueDisplay(value); 
   sendCommand({ action: 'setManualSpeed', value: parseInt(value) });
 }
-function displayFanCurve(curvePoints) {
-  const container = document.getElementById('fanCurvePointsContainer');
-  if (!container) return; 
-  container.innerHTML = ''; 
-  if (!curvePoints || curvePoints.length === 0) {
-    container.innerHTML = '<p class="placeholder">No curve points. Add points.</p>'; return;
-  }
-  curvePoints.forEach((point, index) => {
-    const div = document.createElement('div');
-    div.classList.add('curve-point');
-    div.innerHTML = `
-      <label>Temp (&deg;C):</label> <input type="number" value="${point.temp}" min="0" max="120" id="temp_p_${index}">
-      <label>Fan (%):</label> <input type="number" value="${point.pwmPercent}" min="0" max="100" id="pwm_p_${index}">
-      <button onclick="removeCurvePointUI(${index})" class="danger" style="padding:5px 10px; font-size:0.8em;">X</button>`;
-    container.appendChild(div);
-  });
-}
-function addCurvePointUI() {
-  const container = document.getElementById('fanCurvePointsContainer');
-  if (!container) return; 
-  const placeholder = container.querySelector('.placeholder');
-  if (placeholder) placeholder.remove();
-  const currentPoints = container.querySelectorAll('.curve-point').length;
-  if (currentPoints >= MAX_CURVE_POINTS_UI) {
-    alert(`Max ${MAX_CURVE_POINTS_UI} points.`); return;
-  }
-  const index = currentPoints; 
-  const div = document.createElement('div');
-  div.classList.add('curve-point');
-  let lastTemp = 0, lastPwm = 0;
-  if (index > 0) {
-      try { 
-        lastTemp = parseInt(document.getElementById(`temp_p_${index-1}`).value) || 0;
-        lastPwm = parseInt(document.getElementById(`pwm_p_${index-1}`).value) || 0;
-      } catch (e) { /* ignore */ }
-  }
-  const defaultNewTemp = Math.min(120, lastTemp + 10); 
-  const defaultNewPwm = Math.min(100, lastPwm + 10);  
-  div.innerHTML = `
-    <label>Temp (&deg;C):</label> <input type="number" value="${defaultNewTemp}" min="0" max="120" id="temp_p_${index}">
-    <label>Fan (%):</label> <input type="number" value="${defaultNewPwm}" min="0" max="100" id="pwm_p_${index}">
-    <button onclick="removeCurvePointUI(${index})" class="danger" style="padding:5px 10px; font-size:0.8em;">X</button>`;
-  container.appendChild(div);
-}
-function removeCurvePointUI(idx) {
-    const container = document.getElementById('fanCurvePointsContainer');
-    if (!container) return;
-    const points = container.querySelectorAll('.curve-point');
-    if (points[idx]) points[idx].remove();
-    if (container.querySelectorAll('.curve-point').length === 0) {
-        container.innerHTML = '<p class="placeholder">No curve points. Add points.</p>';
+
+// --- Fan Curve Chart Functions ---
+
+function handleChartRightClick(e) {
+    e.preventDefault();
+    if (!fanCurveChart) return;
+
+    const points = fanCurveChart.getElementsAtEventForMode(e, 'point', { intersect: true }, true);
+
+    if (points.length > 0) {
+        const firstPoint = points[0];
+        const datasetIndex = firstPoint.datasetIndex;
+        const index = firstPoint.index;
+        
+        let data = fanCurveChart.data.datasets[datasetIndex].data;
+        if (data.length > MIN_CURVE_POINTS_UI) {
+            data.splice(index, 1);
+            fanCurveChart.update();
+        } else {
+            alert(`A minimum of ${MIN_CURVE_POINTS_UI} points is required.`);
+        }
     }
 }
-function saveFanCurve() {
-  const points = [];
-  const pElements = document.querySelectorAll('#fanCurvePointsContainer .curve-point');
-  let isValid = true, lastTemp = -100; 
-  pElements.forEach((el, index) => {
-    const tempIn = el.querySelector('input[type="number"][id^="temp_p_"]');
-    const pwmIn = el.querySelector('input[type="number"][id^="pwm_p_"]');
-    if (!tempIn || !pwmIn) { isValid = false; return; } 
-    const temp = parseInt(tempIn.value);
-    const pwmPercent = parseInt(pwmIn.value);
-    if (isNaN(temp) || isNaN(pwmPercent) || temp < 0 || temp > 120 || pwmPercent < 0 || pwmPercent > 100 || (index > 0 && temp <= lastTemp)) {
-      alert(`Invalid data at point ${index + 1}. Temps must be increasing and within valid ranges (Temp: 0-120, PWM: 0-100).`); 
-      isValid = false; 
-      return; 
+
+function createOrUpdateFanChart(curvePoints) {
+    const canvas = document.getElementById('fanCurveChart');
+    const ctx = canvas.getContext('2d');
+    
+    if (fanCurveChart) {
+        fanCurveChart.destroy();
     }
-    lastTemp = temp; 
-    points.push({ temp: temp, pwmPercent: pwmPercent });
-  });
 
-  if (!isValid) return; 
+    const chartData = curvePoints.map(p => ({ x: p.temp, y: p.pwmPercent }));
 
-  if (points.length < 2) { 
-    alert("Minimum 2 points required for a fan curve."); 
-    return; 
-  }
-  if (points.length > MAX_CURVE_POINTS_UI) { 
-    alert(`Maximum ${MAX_CURVE_POINTS_UI} points allowed for a fan curve.`); 
-    return; 
-  }
-  sendCommand({ action: 'setCurve', curve: points });
-  alert("Fan curve sent to device. It will be validated and saved by the ESP32.");
+    const config = {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Fan Curve',
+                data: chartData,
+                showLine: true,
+                borderColor: '#3498db',
+                backgroundColor: '#3498db',
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            onClick: (e) => {
+                if (!fanCurveChart) return;
+                
+                // Prevent adding a new point if an existing point was clicked.
+                const pointsAtEvent = fanCurveChart.getElementsAtEventForMode(e, 'point', { intersect: true }, true);
+                if (pointsAtEvent.length > 0) {
+                    return;
+                }
+
+                const data = fanCurveChart.data.datasets[0].data;
+                if (data.length >= MAX_CURVE_POINTS_UI) {
+                    alert(`Maximum of ${MAX_CURVE_POINTS_UI} points reached.`);
+                    return;
+                }
+
+                const canvasPosition = Chart.helpers.getRelativePosition(e, fanCurveChart);
+                const newX = fanCurveChart.scales.x.getValueForPixel(canvasPosition.x);
+                const newY = fanCurveChart.scales.y.getValueForPixel(canvasPosition.y);
+                
+                // Add the new point, rounding to the nearest integer for consistency.
+                data.push({x: Math.round(newX), y: Math.round(newY)});
+                
+                // Sort the data array by x-value to maintain order
+                data.sort((a,b) => a.x - b.x);
+                
+                // Update the chart
+                fanCurveChart.update();
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    position: 'bottom',
+                    title: { display: true, text: 'Temperature (°C)', font: { size: 14 } },
+                    min: 0,
+                    max: 120,
+                    ticks: { stepSize: 10 }
+                },
+                y: {
+                    title: { display: true, text: 'Fan Speed (%)', font: { size: 14 } },
+                    min: 0,
+                    max: 100,
+                    ticks: { stepSize: 10 }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                dragData: {
+                    round: 0,
+                    dragX: true, // This enables dragging on the X axis
+                    onDrag: (e, datasetIndex, index, value) => {
+                        value.x = Math.max(0, Math.min(120, value.x));
+                        value.y = Math.max(0, Math.min(100, value.y));
+                        e.target.style.cursor = 'grabbing';
+                    },
+                    onDragEnd: (e, datasetIndex, index, value) => {
+                        e.target.style.cursor = 'grab';
+                        let data = fanCurveChart.data.datasets[datasetIndex].data;
+                        data.sort((a, b) => a.x - b.x);
+                        fanCurveChart.update('none');
+                    },
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Temp: ${context.parsed.x.toFixed(0)}°C, Speed: ${context.parsed.y.toFixed(0)}%`;
+                        }
+                    }
+                }
+            }
+        }
+    };
+    fanCurveChart = new Chart(ctx, config);
+    // Add context menu listener for deleting points
+    canvas.addEventListener('contextmenu', handleChartRightClick);
 }
 
+function saveFanCurveFromChart() {
+    if (!fanCurveChart) {
+        console.error("Chart not initialized.");
+        return;
+    }
+
+    const chartData = fanCurveChart.data.datasets[0].data;
+    const pointsToSend = chartData.map(p => ({
+        temp: Math.round(p.x),
+        pwmPercent: Math.round(p.y)
+    }));
+
+    if (pointsToSend.length < MIN_CURVE_POINTS_UI) { 
+        alert(`A minimum of ${MIN_CURVE_POINTS_UI} points is required.`); 
+        return; 
+    }
+    
+    for (let i = 0; i < pointsToSend.length - 1; i++) {
+        if (pointsToSend[i].temp >= pointsToSend[i+1].temp) {
+            alert("Invalid curve: Temperatures must be unique and in increasing order. Please adjust the points.");
+            return;
+        }
+    }
+
+    sendCommand({ action: 'setCurve', curve: pointsToSend });
+    
+    const saveButton = document.querySelector('.modal-content .chart-controls button.secondary');
+    if(saveButton) {
+        const originalText = saveButton.innerText;
+        saveButton.innerText = "Saved!";
+        saveButton.disabled = true;
+        setTimeout(() => {
+            saveButton.innerText = originalText;
+            saveButton.disabled = false;
+        }, 2000);
+    }
+}
+
+
+// --- Other Config Functions ---
 function toggleMqttFields() {
   const mqttEnableCheckbox = document.getElementById('mqttEnable');
   const mqttFieldsContainer = document.getElementById('mqttFieldsContainer');

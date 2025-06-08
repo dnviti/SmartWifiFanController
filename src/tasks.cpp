@@ -63,6 +63,7 @@ void networkTask(void *pvParameters) {
                 
                 // Initialize services that depend on WiFi
                 setupWebServerRoutes(); 
+                setupApiRoutes(); // Initialize REST API routes
                 webSocket.begin();
                 webSocket.onEvent(webSocketEvent);
                 server.begin(); 
@@ -70,7 +71,7 @@ void networkTask(void *pvParameters) {
                 if (isMqttEnabled) {
                     setupMQTT(); 
                 }
-                if(serialDebugEnabled) Serial.println("[SYSTEM] Network services (Web, OTA, MQTT) started.");
+                if(serialDebugEnabled) Serial.println("[SYSTEM] Network services (Web, API, OTA, MQTT) started.");
             }
 
             // Continuous network loops
@@ -140,6 +141,16 @@ void mainAppTask(void *pvParameters) {
         handleMenuInput();      
 
         if (!isInMenuMode && !showMenuHint) { 
+            // Check for stale PC temperature data (e.g., timeout after 30 seconds)
+            if (pcTempDataReceived && (currentTime - lastPcTempDataTime > 30000)) {
+                pcTempDataReceived = false;
+                pcTemperature = -999.0;
+                displayUpdateNeeded = true;
+                needsImmediateBroadcast = true;
+                if(serialDebugEnabled) Serial.println("[SYSTEM] PC temperature data timed out.");
+            }
+
+            // Always try to read from physical sensor if it exists
             if (tempSensorFound) {
                 if (currentTime - lastTempReadTime > 2000) { 
                     lastTempReadTime = currentTime;
@@ -156,11 +167,12 @@ void mainAppTask(void *pvParameters) {
                         currentTemperature = -999.0; 
                     }
                 }
-            } else { 
+            } else { // No physical sensor
                 if (currentTemperature > -990.0) { needsImmediateBroadcast = true; displayUpdateNeeded = true; }
                 currentTemperature = -999.0; 
             }
 
+            // RPM calculation logic
             if (currentTime - lastRpmCalculationTime > 1000) { 
                 lastRpmCalculationTime = currentTime;
                 noInterrupts(); 
@@ -182,20 +194,31 @@ void mainAppTask(void *pvParameters) {
                 }
             }
 
-            int oldFanSpeedPercentage = fanSpeedPercentage; 
-
+            // Fan control logic based on prioritized temperature source
             if (isAutoMode) {
-                if (tempSensorFound) {
-                    int autoPwmPerc = calculateAutoFanPWMPercentage(currentTemperature);
+                float temperatureToUse = -999.0;
+                bool tempSourceAvailable = false;
+                
+                // Priority: PC Temp > Onboard Sensor
+                if(pcTempDataReceived && pcTemperature > -990.0) {
+                    temperatureToUse = pcTemperature;
+                    tempSourceAvailable = true;
+                } else if (tempSensorFound && currentTemperature > -990.0) {
+                    temperatureToUse = currentTemperature;
+                    tempSourceAvailable = true;
+                }
+
+                if (tempSourceAvailable) {
+                    int autoPwmPerc = calculateAutoFanPWMPercentage(temperatureToUse);
                     if (autoPwmPerc != fanSpeedPercentage) {
                         setFanSpeed(autoPwmPerc); 
                     }
-                } else { 
+                } else { // No valid temp source available
                     if (AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE != fanSpeedPercentage) {
                         setFanSpeed(AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE);
                     }
                 }
-            } else { 
+            } else { // Manual mode
                 if (manualFanSpeedPercentage != fanSpeedPercentage) {
                     setFanSpeed(manualFanSpeedPercentage);
                 }

@@ -43,6 +43,11 @@ volatile unsigned long pulseCount = 0;
 unsigned long lastRpmReadTime_Task = 0; 
 volatile StatusScreenView currentStatusScreenView = INFO_IP;
 
+// PC-based Temperature Reporting
+volatile float pcTemperature = -999.0;
+volatile bool pcTempDataReceived = false;
+volatile unsigned long lastPcTempDataTime = 0;
+
 // Menu System Variables
 volatile MenuScreen currentMenuScreen = MAIN_MENU;
 volatile int selectedMenuItem = 0;

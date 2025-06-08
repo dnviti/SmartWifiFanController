@@ -88,36 +88,82 @@ input[type="range"] {
 #manualSpeedValue, #temp, #fanSpeed, #mode, #rpm { 
     font-weight: bold; 
 }
-.curve-editor { 
-    margin-top: 20px; 
+.curve-editor-container {
     padding: 15px; 
-    border: 1px solid #ddd; 
     border-radius: 8px; 
-    background-color: #fdfdfd;
 }
-.curve-point { 
-    display: flex; 
-    align-items: center; 
-    margin-bottom: 8px; 
-    padding: 5px; 
-    border-radius:4px; 
-    background-color:#f9f9f9; 
+
+/* Modal Styles */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 1001; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+    animation-name: fadeIn;
+    animation-duration: 0.3s;
 }
-.curve-point label { 
-    margin-right: 5px; 
-    min-width:50px; 
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 5% auto; /* Adjusted margin for better centering */
+    padding: 25px;
+    border: 1px solid #888;
+    width: 95%;
+    max-width: 700px; /* Wider modal for the chart */
+    border-radius: 12px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    position: relative;
+    animation-name: slideIn;
+    animation-duration: 0.3s;
 }
-.curve-point input[type="number"] { 
-    width: 70px; 
-    padding: 6px; 
-    border: 1px solid #ccc; 
-    border-radius: 4px; 
-    margin-right: 10px; 
+
+.close-button {
+    color: #aaa;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 28px;
+    font-weight: bold;
+    transition: color 0.2s ease;
 }
-#fanCurvePointsContainer .placeholder { 
-    color: #888; 
-    font-style: italic; 
+
+.close-button:hover,
+.close-button:focus {
+    color: #333;
+    text-decoration: none;
+    cursor: pointer;
 }
+
+.chart-container {
+    position: relative;
+    width: 100%;
+    margin-bottom: 20px;
+}
+/* Add a cursor to indicate the chart canvas is interactive */
+#fanCurveChart {
+    cursor: crosshair;
+}
+
+.chart-controls {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+@keyframes fadeIn {
+    from {opacity: 0}
+    to {opacity: 1}
+}
+
+@keyframes slideIn {
+    from {top: -100px; opacity: 0}
+    to {top: 0; opacity: 1}
+}
+
 
 /* MQTT Configuration Styles */
 .mqtt-config-container {

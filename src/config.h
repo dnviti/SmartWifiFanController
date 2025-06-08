@@ -17,7 +17,7 @@
 #include <SPIFFS.h>       
 
 // --- Firmware Version ---
-#define FIRMWARE_VERSION "0.1.6" // Define firmware version
+#define FIRMWARE_VERSION "0.2.1" // Added REST API and PC Temp reporting
 #define PIO_BUILD_ENV_NAME "esp32_fancontrol" 
 
 // --- GitHub OTA Configuration ---
@@ -57,6 +57,10 @@ extern volatile bool isWiFiEnabled;
 extern volatile bool serialDebugEnabled; 
 extern volatile float currentTemperature; 
 extern volatile bool tempSensorFound;      
+// FEATURE: PC-based temperature reporting
+extern volatile float pcTemperature;
+extern volatile bool pcTempDataReceived;
+extern volatile unsigned long lastPcTempDataTime;
 extern volatile int fanRpm;
 extern volatile int fanSpeedPercentage;
 extern volatile int fanSpeedPWM_Raw;
