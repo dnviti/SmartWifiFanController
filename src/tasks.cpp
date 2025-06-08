@@ -14,6 +14,7 @@ void networkTask(void *pvParameters) {
     unsigned long lastPeriodicBroadcastTime = 0;
     unsigned long lastMqttStatusPublishTime = 0;
     unsigned long lastMqttCurvePublishTime = 0; 
+    bool wasConnected = false;
 
     // --- WiFi Connection Handling ---
     if (isWiFiEnabled) {
@@ -32,51 +33,47 @@ void networkTask(void *pvParameters) {
         if (strlen(current_ssid) > 0 && strcmp(current_ssid, "YOUR_WIFI_SSID") != 0 && strcmp(current_ssid, "") != 0 ) {
             WiFi.mode(WIFI_STA); 
             WiFi.begin(current_ssid, current_password);
-            int wifiTimeout = 0;
-            while (WiFi.status() != WL_CONNECTED && wifiTimeout < 30) { 
-                vTaskDelay(pdMS_TO_TICKS(500)); 
-                if(serialDebugEnabled) Serial.print("."); 
-                wifiTimeout++;
-            }
         } else {
             if(serialDebugEnabled) Serial.println("[WiFi] NetworkTask: SSID not configured or is default. Skipping WiFi connection attempt.");
         }
     } else {
          if(serialDebugEnabled) Serial.println("[WiFi] NetworkTask: WiFi is disabled by NVS config. Skipping WiFi connection.");
     }
-
-
-    // --- Service Initialization ---
-    if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) {
-        if(serialDebugEnabled) { 
-            Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
-            Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());
-            Serial.print("[WiFi] NetworkTask: Hostname: "); Serial.println(WiFi.getHostname());
-        }
-        
-        setupWebServerRoutes(); 
-        webSocket.begin();
-        webSocket.onEvent(webSocketEvent);
-        
-        server.begin(); 
-        if(serialDebugEnabled) Serial.println("[SYSTEM] HTTP server and WebSocket started on Core 0.");
-
-        ElegantOTA.begin(&server);
-        if(serialDebugEnabled) Serial.println("[SYSTEM] ElegantOTA started. Update endpoint: /update");
-
-        if (isMqttEnabled) {
-            setupMQTT(); 
-        } else {
-            if(serialDebugEnabled) Serial.println("[MQTT] MQTT is disabled. Skipping MQTT setup in NetworkTask.");
-        }
-
-    } else { 
-        if(isWiFiEnabled && serialDebugEnabled) Serial.println("\n[WiFi] NetworkTask: WiFi Connection Failed or not attempted. Web/MQTT/OTA services may not be available.");
-    }
     
     // --- Main Loop for Network Task ---
     for(;;) {
+        // Handle WiFi connection state changes
+        if (isWiFiEnabled && WiFi.status() != WL_CONNECTED && wasConnected) {
+            if(serialDebugEnabled) Serial.println("[WiFi] NetworkTask: WiFi disconnected.");
+            wasConnected = false;
+            displayUpdateNeeded = true; // Request screen update on disconnect
+        }
+
         if (isWiFiEnabled && WiFi.status() == WL_CONNECTED) { 
+            if (!wasConnected) {
+                // This block runs only once upon successful connection
+                wasConnected = true;
+                if(serialDebugEnabled) { 
+                    Serial.println("\n[WiFi] NetworkTask: Connected successfully!");
+                    Serial.print("[WiFi] NetworkTask: IP Address: "); Serial.println(WiFi.localIP());
+                    Serial.print("[WiFi] NetworkTask: Hostname: "); Serial.println(WiFi.getHostname());
+                }
+                
+                displayUpdateNeeded = true;
+                
+                // Initialize services that depend on WiFi
+                setupWebServerRoutes(); 
+                webSocket.begin();
+                webSocket.onEvent(webSocketEvent);
+                server.begin(); 
+                ElegantOTA.begin(&server);
+                if (isMqttEnabled) {
+                    setupMQTT(); 
+                }
+                if(serialDebugEnabled) Serial.println("[SYSTEM] Network services (Web, OTA, MQTT) started.");
+            }
+
+            // Continuous network loops
             webSocket.loop();
             ElegantOTA.loop(); 
             unsigned long currentTime = millis();
@@ -111,12 +108,13 @@ void networkTask(void *pvParameters) {
                      lastMqttCurvePublishTime = currentTime;
                 }
             }
-        } else if (isWiFiEnabled && WiFi.status() != WL_CONNECTED) {
-            if (serialDebugEnabled && millis() % 15000 < 50) { 
-                 Serial.println("[WiFi] NetworkTask: WiFi disconnected. Waiting for reconnection or config change. OTA/Web/MQTT unavailable.");
+        } else if (isWiFiEnabled) {
+            // Attempt to reconnect if enabled but not connected
+            if (millis() % 15000 < 50) { // Log occasionally
+                 if(serialDebugEnabled) Serial.print(".");
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(100)); // Increased delay for stability
     }
 }
 
@@ -125,15 +123,15 @@ void mainAppTask(void *pvParameters) {
     if(serialDebugEnabled) Serial.println("[TASK] Main Application Task started on Core 1.");
     unsigned long lastTempReadTime = 0;
     unsigned long lastRpmCalculationTime = 0;
+    unsigned long lastDisplayUpdateTime = 0; // For periodic display refresh
     lastRpmReadTime_Task = millis(); 
 
     for(;;) {
         unsigned long currentTime = millis();
 
-        // FIX: Handle the timeout for the menu hint screen
         if (showMenuHint && (currentTime - menuHintStartTime > 3000)) {
             showMenuHint = false;
-            displayUpdateNeeded = true; // Request a redraw to show the status screen again
+            displayUpdateNeeded = true;
         }
 
         if(serialDebugEnabled) { 
@@ -141,7 +139,7 @@ void mainAppTask(void *pvParameters) {
         }
         handleMenuInput();      
 
-        if (!isInMenuMode && !showMenuHint) { // Only run main logic if not in menu and not showing hint
+        if (!isInMenuMode && !showMenuHint) { 
             if (tempSensorFound) {
                 if (currentTime - lastTempReadTime > 2000) { 
                     lastTempReadTime = currentTime;
@@ -190,7 +188,7 @@ void mainAppTask(void *pvParameters) {
                 if (tempSensorFound) {
                     int autoPwmPerc = calculateAutoFanPWMPercentage(currentTemperature);
                     if (autoPwmPerc != fanSpeedPercentage) {
-                        setFanSpeed(autoPwmPerc); // setFanSpeed handles displayUpdateNeeded
+                        setFanSpeed(autoPwmPerc); 
                     }
                 } else { 
                     if (AUTO_MODE_NO_SENSOR_FAN_PERCENTAGE != fanSpeedPercentage) {
@@ -204,10 +202,13 @@ void mainAppTask(void *pvParameters) {
             }
         } 
         
-        // Update display if a redraw has been requested
-        if (displayUpdateNeeded) {
+        // FIX: Implement hybrid display update logic.
+        // This will update the display immediately when an action requires it,
+        // OR it will update periodically every 500ms to refresh live data.
+        if (displayUpdateNeeded || (currentTime - lastDisplayUpdateTime > 500)) {
             updateDisplay();
             displayUpdateNeeded = false; // Reset the flag
+            lastDisplayUpdateTime = currentTime;
         }
 
         vTaskDelay(pdMS_TO_TICKS(50));
