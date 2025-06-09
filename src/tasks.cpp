@@ -66,8 +66,19 @@ void networkTask(void *pvParameters) {
                 setupApiRoutes(); // Initialize REST API routes
                 webSocket.begin();
                 webSocket.onEvent(webSocketEvent);
+
+                // --- SECURE OTA ---
+                // Pass authentication credentials to ElegantOTA's begin method.
+                // The library handles an empty username as no authentication.
+                if (strlen(ota_user) > 0) {
+                    if(serialDebugEnabled) Serial.println("[SYSTEM] ElegantOTA authentication enabled.");
+                } else {
+                    if(serialDebugEnabled) Serial.println("[SYSTEM_WARN] ElegantOTA authentication is DISABLED (ota_user is empty).");
+                }
+                ElegantOTA.begin(&server, ota_user, ota_password);
+
                 server.begin(); 
-                ElegantOTA.begin(&server);
+                
                 if (isMqttEnabled) {
                     setupMQTT(); 
                 }

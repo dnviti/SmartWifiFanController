@@ -142,6 +142,10 @@ extern volatile bool ota_in_progress;
 extern String ota_status_message; 
 extern String GITHUB_API_ROOT_CA_STRING; 
 
+// --- Security Configuration ---
+extern char ota_user[32];
+extern char ota_password[64];
+
 
 // --- Global Objects (declared extern, defined in main.cpp) ---
 extern Preferences preferences;

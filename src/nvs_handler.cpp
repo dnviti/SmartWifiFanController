@@ -32,12 +32,14 @@ void loadWiFiConfig() {
         // Only copy if the stored value is different and valid
         if (stored_ssid.length() > 0 && stored_ssid.length() < sizeof(current_ssid)) {
              if (strcmp(current_ssid, stored_ssid.c_str()) != 0) { 
-                strcpy(current_ssid, stored_ssid.c_str());
+                strncpy(current_ssid, stored_ssid.c_str(), sizeof(current_ssid) - 1);
+                current_ssid[sizeof(current_ssid) - 1] = '\0';
              }
         }
         if (stored_password.length() < sizeof(current_password)) { // Allow empty password
             if (strcmp(current_password, stored_password.c_str()) != 0) {
-                strcpy(current_password, stored_password.c_str());
+                strncpy(current_password, stored_password.c_str(), sizeof(current_password) - 1);
+                current_password[sizeof(current_password) - 1] = '\0';
             }
         }
         preferences.end();
@@ -207,5 +209,38 @@ void loadMqttDiscoveryConfig() {
         // Defaults are already set in main.cpp, ensure isMqttDiscoveryEnabled is true if load fails
         isMqttDiscoveryEnabled = true; 
         strcpy(mqttDiscoveryPrefix, "homeassistant");
+    }
+}
+
+// --- NVS Helper Functions for Security/OTA ---
+void saveOtaConfig() {
+    if (preferences.begin("ota-cfg", false)) { // Open for writing
+        preferences.putString("otaUser", ota_user);
+        preferences.putString("otaPass", ota_password);
+        preferences.end();
+        if (serialDebugEnabled) Serial.println("[NVS] OTA security configuration saved.");
+    } else {
+        if (serialDebugEnabled) Serial.println("[NVS_SAVE_ERR] Failed to open 'ota-cfg' for writing.");
+    }
+}
+
+void loadOtaConfig() {
+    if (preferences.begin("ota-cfg", true)) { // Open read-only
+        String tempUser = preferences.getString("otaUser", "admin");
+        strncpy(ota_user, tempUser.c_str(), sizeof(ota_user) - 1);
+        ota_user[sizeof(ota_user) - 1] = '\0';
+
+        String tempPass = preferences.getString("otaPass", "fancontrol");
+        strncpy(ota_password, tempPass.c_str(), sizeof(ota_password) - 1);
+        ota_password[sizeof(ota_password) - 1] = '\0';
+        
+        preferences.end();
+        if (serialDebugEnabled) {
+            Serial.println("[NVS] OTA security configuration loaded.");
+            Serial.printf("  OTA User: %s\n", ota_user);
+        }
+    } else {
+        if (serialDebugEnabled) Serial.println("[NVS_LOAD_ERR] Failed to open 'ota-cfg' for reading. Using default OTA credentials.");
+        // Defaults are already set in main.cpp globals
     }
 }

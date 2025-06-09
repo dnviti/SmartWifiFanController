@@ -18,6 +18,7 @@ window.addEventListener('load', onLoad);
 function onLoad(event) { 
   initWebSocket();
   initModal();
+  document.getElementById('otaManualLink').href = `http://${window.location.hostname}/update`;
   
   const mqttEnableCheckbox = document.getElementById('mqttEnable');
   if (mqttEnableCheckbox) {
@@ -135,7 +136,7 @@ function onMessage(event) {
     fanCurveDataCache = data.fanCurve;
   }
 
-  // --- MQTT & OTA updates ---
+  // --- MQTT & OTA & Security updates ---
   if (data.isMqttEnabled !== undefined) {
     document.getElementById('mqttEnable').checked = data.isMqttEnabled;
     toggleMqttFields();
@@ -157,8 +158,11 @@ function onMessage(event) {
     const otaButton = document.getElementById('otaUpdateButton');
     if (otaButton) {
         otaButton.disabled = data.otaInProgress;
-        otaButton.innerText = data.otaInProgress ? "Update in Progress..." : "Check for Updates & Install";
+        otaButton.innerText = data.otaInProgress ? "Update in Progress..." : "Check for GitHub Updates & Install";
     }
+  }
+  if (data.otaUser !== undefined) {
+    document.getElementById('otaUser').value = data.otaUser;
   }
 }
 
@@ -397,6 +401,39 @@ function saveMqttDiscoveryConfig() {
   document.getElementById('mqttDiscoveryRebootNotice').classList.remove('hidden');
   setTimeout(() => {
     document.getElementById('mqttDiscoveryRebootNotice').classList.add('hidden');
+  }, 7000);
+}
+
+function saveSecurityConfig() {
+  const user = document.getElementById('otaUser').value.trim();
+  const pass = document.getElementById('otaPass').value;
+
+  if (!user) {
+    alert("OTA Username cannot be empty.");
+    return;
+  }
+  if (!pass) {
+    alert("Please enter a new password for OTA updates.");
+    return;
+  }
+  if (user.length > 31 || pass.length > 63) {
+      alert("Username or password is too long.");
+      return;
+  }
+
+  const securityConfig = {
+    action: 'setSecurityConfig',
+    otaUser: user,
+    otaPass: pass
+  };
+
+  document.getElementById('otaPass').value = ''; // Clear password field after getting value
+
+  sendCommand(securityConfig);
+  alert("Security configuration sent to device. A reboot is required for changes to take full effect.");
+  document.getElementById('securityRebootNotice').classList.remove('hidden');
+  setTimeout(() => {
+    document.getElementById('securityRebootNotice').classList.add('hidden');
   }, 7000);
 }
 

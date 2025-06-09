@@ -165,8 +165,9 @@ input[type="range"] {
 }
 
 
-/* MQTT Configuration Styles */
-.mqtt-config-container {
+/* MQTT and Security Configuration Styles */
+.mqtt-config-container,
+.security-config-container {
     margin-top: 20px;
     padding: 15px;
     border: 1px solid #ddd;

@@ -99,6 +99,10 @@ volatile bool ota_in_progress = false;
 String ota_status_message = "OTA Idle"; 
 String GITHUB_API_ROOT_CA_STRING = "";
 
+// --- Security Configuration ---
+char ota_user[32] = "admin";
+char ota_password[64] = "fancontrol";
+
 
 // Global Objects
 Preferences preferences;
@@ -179,6 +183,7 @@ void setup() {
     loadWiFiConfig(); 
     loadMqttConfig(); 
     loadMqttDiscoveryConfig(); 
+    loadOtaConfig();
 
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA); 

@@ -16,4 +16,8 @@ void loadMqttConfig();
 void saveMqttDiscoveryConfig();
 void loadMqttDiscoveryConfig();
 
+// Security NVS Functions
+void saveOtaConfig();
+void loadOtaConfig();
+
 #endif // NVS_HANDLER_H

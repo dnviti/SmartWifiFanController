@@ -37,6 +37,7 @@ void broadcastWebSocketData() {
     // OTA Status
     jsonDoc["otaInProgress"] = ota_in_progress;
     jsonDoc["otaStatusMessage"] = ota_status_message;
+    jsonDoc["otaUser"] = ota_user; // Send current OTA username
 
 
     ArduinoJson::JsonArray curveArray = jsonDoc["fanCurve"].to<ArduinoJson::JsonArray>();
@@ -244,6 +245,45 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
                         needsImmediateBroadcast = true;
                     } else {
                          if (serialDebugEnabled) Serial.println("[WS] MQTT Discovery configuration received, but no changes detected.");
+                    }
+                }
+                else if (strcmp(action, "setSecurityConfig") == 0) {
+                    if (serialDebugEnabled) Serial.println("[WS] Received Security configuration update.");
+                    bool changed = false;
+                    
+                    if (doc["otaUser"].is<const char*>()) {
+                        String newUser = doc["otaUser"];
+                        if (newUser.length() > 0 && newUser.length() < sizeof(ota_user)) {
+                            if (strcmp(ota_user, newUser.c_str()) != 0) {
+                                strncpy(ota_user, newUser.c_str(), sizeof(ota_user));
+                                ota_user[sizeof(ota_user)-1] = '\0';
+                                changed = true;
+                            }
+                        } else if (serialDebugEnabled) {
+                            Serial.printf("[WS_ERR] OTA Username empty or too long: %s\n", newUser.c_str());
+                        }
+                    }
+
+                    if (doc["otaPass"].is<const char*>()) {
+                        String newPass = doc["otaPass"];
+                        if (newPass.length() > 0 && newPass.length() < sizeof(ota_password)) {
+                             if (strcmp(ota_password, newPass.c_str()) != 0) {
+                                strncpy(ota_password, newPass.c_str(), sizeof(ota_password));
+                                ota_password[sizeof(ota_password)-1] = '\0';
+                                changed = true;
+                             }
+                        } else if (serialDebugEnabled) {
+                             Serial.println("[WS_ERR] OTA Password too long.");
+                        }
+                    }
+                    
+                    if (changed) {
+                        if (serialDebugEnabled) Serial.println("[SYSTEM] OTA security configuration updated via WebSocket. Reboot needed.");
+                        saveOtaConfig();
+                        rebootNeeded = true;
+                        needsImmediateBroadcast = true;
+                    } else {
+                         if (serialDebugEnabled) Serial.println("[WS] OTA security configuration received, but no changes detected.");
                     }
                 }
                 else if (strcmp(action, "triggerOtaUpdate") == 0) { 

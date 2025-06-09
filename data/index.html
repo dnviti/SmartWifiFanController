@@ -86,16 +86,40 @@
     </div>
 
     <div class="container ota-update-container">
-        <h2>Firmware Update (OTA from GitHub)</h2>
+        <h2>Firmware Update</h2>
         <div id="otaStatusContainer">
             <p>Status: <span id="otaStatusMessage" class="data-value">Idle</span></p>
         </div>
-        <button id="otaUpdateButton" onclick="triggerOtaUpdate()">Check for Updates & Install</button>
         <p style="font-size:0.9em; color:#555;">
-            This will check the latest release on GitHub (<a href="https://github.com/dnviti/SmartWifiFanController/releases/latest" target="_blank" rel="noopener noreferrer">dnviti/SmartWifiFanController</a>) and update if a newer version is found.
-            The device will reboot automatically after a successful update. Ensure WiFi is connected.
+            <b>Manual Upload:</b> Navigate to <a id="otaManualLink" href="/update" target="_blank">/update</a> to upload firmware manually. Credentials are required.
+        </p>
+        <p style="font-size:0.9em; color:#555;">
+            <b>Remote Update from GitHub:</b> Check for and install the latest release.
+        </p>
+        <button id="otaUpdateButton" onclick="triggerOtaUpdate()">Check for GitHub Updates & Install</button>
+        <p style="font-size:0.8em; color:#666;">
+            Uses secure connection to <a href="https://github.com/dnviti/SmartWifiFanController/releases/latest" target="_blank" rel="noopener noreferrer">GitHub</a>. Device will reboot after a successful update.
         </p>
     </div>
+
+    <div class="container security-config-container">
+        <h2>Security Settings</h2>
+        <p style="font-size:0.9em; color:#555;">
+            Configure access credentials for sensitive functions like manual OTA updates.
+            A reboot is required for changes to take effect.
+        </p>
+        <div class="config-item">
+          <label for="otaUser">OTA Update Username:</label>
+          <input type="text" id="otaUser" placeholder="admin" autocomplete="username">
+        </div>
+        <div class="config-item">
+          <label for="otaPass">OTA Update Password:</label>
+          <input type="password" id="otaPass" placeholder="New Password" autocomplete="new-password">
+        </div>
+        <button onclick="saveSecurityConfig()" class="secondary">Save Security Config</button>
+        <p class="reboot-notice hidden" id="securityRebootNotice">A reboot is required for security settings to take effect.</p>
+    </div>
+
   </div> 
 
   <!-- Fan Curve Modal -->
